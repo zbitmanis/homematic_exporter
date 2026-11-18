@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+/state/
+.env
+config.ini
+# fixture capture outputs (local only, review before ever committing)
+tests/source/fixtures/state.scrubbed.json
+tests/source/fixtures/state.summary.md
