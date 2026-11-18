@@ -12,6 +12,7 @@ name: pr-image
       platforms: { type: string, default: "linux/amd64,linux/arm64" }
       context: { type: string, default: "." }
       dockerfile: { type: string, default: "Dockerfile" }
+      licenses: { type: string, default: "", description: "SPDX expression for the org.opencontainers.image.licenses label" }
     secrets:
       DOCKERHUB_TOKEN:
         required: false   # absent for forks
@@ -71,6 +72,10 @@ jobs:
           platforms: ${{ inputs.platforms }}
           push: ${{ env.SAME_REPO == 'true' }}
           tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.licenses=${{ inputs.licenses }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

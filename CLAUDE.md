@@ -8,7 +8,7 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - Test: `pytest -q` (expect all passed, no network)
 - Lint: `ruff check . && ruff format --check .` (expect no output / "already formatted")
 - Types: `mypy src` (expect "Success: no issues found")
-- Audit: `pip-audit -r requirements.txt`
+- Audit: `pip-audit -r requirements.txt` and `python scripts/check_licenses.py` (licence allowlist; expect `homematicip` listed as EXCEPTION)
 - E2E: `pytest -m e2e tests/e2e`
 - Run: `uvicorn homematic_exporter.app:create_app --factory --port 9100`
 

@@ -44,7 +44,7 @@ Drafts live in `docs/ci/central/` here until the central repo exists; callers ar
 | QEMU arm64 | QEMU (same); native arm runner is a later optimisation | Q10 decided |
 | `-amd64`/`-arm64` tags | removed | misleading |
 | Tag-pinned Docker actions | version tags with `TODO pin by SHA` | SHAs could not be looked up offline; add with `pinact`/Renovate |
-| none | `sbom: true`, `provenance: true`, gha cache | supply chain; verify Podman handles the attestation manifests (they show as `unknown/unknown`) |
+| none | `sbom: true`, `provenance: true`, gha cache, OCI licence/source/revision labels (`licenses` input in the central draft) | supply chain; verify Podman handles the attestation manifests (they show as `unknown/unknown`) |
 | `npm audit signatures` | dropped | re-add if wanted |
 | dead `VERSION=$(cat .VERSION)` | removed | had no effect |
 

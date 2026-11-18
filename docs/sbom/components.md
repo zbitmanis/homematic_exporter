@@ -51,11 +51,11 @@ Transitive runtime dependencies (29 packages in total) are listed in the generat
 - If the GPL terms become unacceptable, the alternative is replacing `homematicip` with an own `httpx` client (clean-room, no GPL source reuse).
 
 #### Image distribution checklist (for the Dockerfile and release workflow)
-- [ ] Copy `LICENSE`, `THIRD_PARTY_NOTICES.md` and the GPL-3.0 text into the image (e.g. `/licenses/`)
-- [ ] Label the image: `org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later"`, `org.opencontainers.image.source=<repo URL>`
-- [ ] State in the Docker Hub description that the image bundles `homematicip` (GPL-3.0-or-later) with a source link
+- [x] Copy `LICENSE`, `THIRD_PARTY_NOTICES.md` and the GPL-3.0 text into the image: `/licenses/` in the `Dockerfile` (GPL text in `LICENSES/GPL-3.0-or-later.txt`); image build not yet run
+- [x] Label the image: `org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later"`, `source`, `revision` (Dockerfile `LABEL` and workflow `labels:`)
+- [ ] State in the Docker Hub description that the image bundles `homematicip` (GPL-3.0-or-later) with a source link: text ready in `docs/dockerhub-description.md`, **paste it manually** (automation is a follow-up)
 - [ ] Attach the CycloneDX SBOM to releases (already planned)
-- [ ] Re-check the licence list on every dependency change (`pip-licenses` vs the allowlist)
+- [x] Re-check the licence list on every dependency change: `python scripts/check_licenses.py` runs in the CI gate (allowlist, `homematicip` exception)
 
 Runtime image: multi-stage, slim Python base (record the base image digest in the SBOM at build).
 
