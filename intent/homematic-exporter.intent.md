@@ -1,7 +1,7 @@
 # Intent: Homematic IP heating Prometheus exporter
 
 - **Author:** andris
-- **Status:** accepted 2026-11-18 (owner); next stage: `specs/spec.md`
+- **Status:** accepted 2026-11-18 (owner); `specs/spec.md` drafted (review pending)
 - **Stage:** Plan (AI-native SDLC)
 
 ## Problem
@@ -14,7 +14,7 @@ A small container service that polls Homematic IP, caches the results, and expos
 
 1. Prometheus scrapes `/metrics` and per-room temperature, setpoint, valve position, humidity and battery state appear within one poll interval of startup.
 2. An alert on `time() - homematic_last_successful_poll_timestamp_seconds > 300` fires when the exporter runs but data is stale.
-3. A new metric can be added by editing `metrics.yaml` only.
+3. A new metric can be added by editing the mounted `config.yaml` only (mapping is configuration, structure is code; see `specs/spec.md` 5.1).
 4. The service survives restarts without re-pairing (the token is supplied as a Podman secret/env; nothing to re-pair).
 5. A push to GitHub produces a tested, multi-arch container image on Docker Hub without manual steps; pull requests get automatically tagged builds.
 6. **Several coding agents can build it in parallel** without editing each other's files (see "Harness goals").
@@ -38,6 +38,20 @@ Newly added Homematic IP set:
 **Decided signals (starting point):** `lowBat`, `unreach`, `rssiDeviceValue` (radio quality) and `deviceUndervoltage`, exposed per device (label `device`), plus low-since and last-replaced derived in `state/`.
 
 Alert examples: any device low-battery > 0 → "prepare charged set"; device unreachable > 15 min.
+
+## Config generator (added 2026-11-18)
+
+Mapping is configuration, not code (see `specs/spec.md` 5.1). To avoid hand-writing it, and to cope with new Homematic IP devices, the project includes a **script that generates a draft `config.yaml` from the state the API returns** (the JSON that `scripts/fixture/dump_state.py` writes as `state.scrubbed.json`, or a fresh download).
+
+Requirements:
+1. **Input:** a Homematic IP state JSON file (offline; no credentials needed). Optionally the existing config, to show what is new.
+2. **Output:** a draft `config.yaml` with `extract.device_models` for every observed `modelType` (suggested short names), `extract.valves`/`contacts` rules for observed channel types, and `metrics` for the fields found per scope; plus comments listing fields that exist in the data but were not mapped, so new numeric fields can be added as `extras` quickly.
+3. **Deterministic and reviewable:** same input gives the same output; every generated entry is marked as a suggestion; the owner reviews and edits before use.
+4. **Safe to commit:** the output contains no SGTINs, serials, ids, tokens, PINs, room names or device names, only model types, channel types and raw field names, so a config file may live in git.
+5. **Self-checking:** the output passes `check_config` (spec R20) against the same input.
+
+Non-goals: applying the config automatically, calling the API itself (the capture tool does that), guessing semantics beyond field names and types.
+Anti-goal: a generator whose output leaks identifying data from the input.
 
 ## Affected users and systems
 
@@ -136,7 +150,7 @@ Anti-goal: a release that includes a dependency or copied file with an unrecorde
 
 1. ~~Which Homematic IP library?~~ **Resolved by spike** (`docs/spikes/homematicip-spike.md`): `homematicip` 2.23.1, async, Python >=3.12. Residual: GPL-3.0 licence decision, and confirmation against a real fixture.
 2. ~~Field mapping~~ **Answered by the fixture (2026-11-18):** 12 `HEATING` groups = 12 rooms (group label = room). Per room: `actualTemperature`, `setPointTemperature`, `humidity`, `controlMode`, `lowBat`, `unreach`. Room-level `valvePosition` is empty; per-valve positions come from the 11 used `FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL`s of the HmIP-FALMOT-C12 (value 0.0-1.0, each channel maps to a room via its `groups`) and from `HmIP-eTRV-B-2` radiator thermostats (`valvePosition`, `valveActualTemperature`). Every device carries `lowBat`, `unreach`, `rssiDeviceValue`, `deviceUndervoltage`.
-3. ~~Poll vs websocket~~ **Decided (owner, 2026-11-18): periodic poll**, default 30 s (`POLL_INTERVAL_SECONDS`). Websocket is a possible later enhancement.
+3. ~~Poll vs websocket~~ **Decided (owner, 2026-11-18): periodic poll**, default 60 s (`POLL_INTERVAL_SECONDS`, changed from 30 s in the spec review, C8). Websocket is a possible later enhancement.
 4. ~~Pairing flow~~ **Decided (owner, 2026-11-18): option A.** v1 has no pairing code. The token is generated once with the library's `hmip_generate_auth_token` and supplied to the container as a Podman secret / env (`HMIP_ACCESS_POINT`, `HMIP_AUTH_TOKEN`). A built-in `pair` command is a possible later addition.
 5. ~~Boiler state~~ **Answered: not available (derived proxy accepted by owner).** `HEATING_COOLING_DEMAND_BOILER` and `..._PUMP` groups exist but `on` and `heatDemand` are `None`; the circulation-pump switch (HmIP-FSM) also reports `on = None`. Proposal: export a derived `homematic_heat_demand` (any valve position > 0) and `homematic_valves_open` count instead, and revisit if the FSM starts reporting `on`.
 6. ~~Battery level?~~ **Answered by spike:** the library exposes only `lowBat`, `unreach`, `rssiDeviceValue` and `deviceUndervoltage` (booleans/RSSI), no voltage or percentage. Low-since and last-replaced tracking is therefore the primary signal.

@@ -11,7 +11,7 @@ Package root: `src/homematic_exporter/`. One agent owns one module per worktree.
 | contracts | `contracts.py` | `Snapshot`, `Source` and `StateStore` protocols | the protocols themselves | nothing | mypy; changes need spec change |
 | source | `source/` | Homematic IP client (cloud first, CCU later) | implements `Source.fetch() -> Snapshot` (async) | contracts (token via env) | `tests/source/` fixtures, no network |
 | state | `state/` | Battery history on the volume | implements `StateStore`; enforces 0700/0600 | contracts | `tests/state/` tmp_path tests incl. permissions |
-| metrics | `metrics/` | YAML definitions -> prometheus objects | `Registry.build(config)`, `Registry.update(snapshot)` | contracts | golden `metrics.yaml` + snapshot -> exposition text |
+| metrics | `metrics/` | `config.yaml` schema/validation, metric definitions -> prometheus objects | `load_config`, `Registry.build`, `Registry.update(snapshot, batteries)`, `check_config` | contracts | golden default config + mini fixture -> exposition text |
 | app | `app/` | FastAPI, poll loop, meta-metrics, env config | `create_app() -> FastAPI`; `/metrics /health /status` | contracts (protocols only) | fake Source, loop-error survival, clean shutdown |
 
 Dependency direction: `app` wires concrete `source`, `state`, `metrics` and depends only on `contracts` types. Other modules never import each other's concrete classes.

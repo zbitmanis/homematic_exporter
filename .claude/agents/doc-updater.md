@@ -43,10 +43,10 @@ pip list --format=freeze                                         # compare with 
 ## Workflow
 
 ### 1. Analyze the repository
-Modules under `src/homematic_exporter/` (`source`, `state`, `metrics`, `app`, `contracts.py`), entry point (`create_app`), config env vars, metrics in `metrics.yaml`.
+Modules under `src/homematic_exporter/` (`source`, `state`, `metrics`, `app`, `contracts.py`), entry point (`create_app`), config env vars, mapping and metrics in `config/default-config.yaml`.
 
 ### 2. Update documentation
-1. **Extract** — public classes/functions, env vars (search for `os.environ`), routes, metric names from `metrics.yaml`
+1. **Extract** — public classes/functions, env vars (search for `os.environ`), routes, metric names from `config/default-config.yaml`
 2. **Update** — module table in `docs/sbom/components.md`, commands in `CLAUDE.md`, roster in `docs/harness.md`, metric catalogue in `specs/spec.md`
 3. **Validate** — every path exists, every command still runs, links work, documented env defaults match the code
 
@@ -56,7 +56,7 @@ Modules under `src/homematic_exporter/` (`source`, `state`, `metrics`, `app`, `c
 docs/CODEMAPS/
 ├── INDEX.md          # overview
 ├── modules.md        # module responsibilities and imports
-├── metrics.md        # metric catalogue from metrics.yaml
+├── metrics.md        # metric catalogue from config/default-config.yaml
 └── operations.md     # config, container, CI/CD
 ```
 
@@ -64,7 +64,7 @@ Format: `Last Updated: YYYY-MM-DD`, entry points, architecture sketch, key modul
 
 ## Key Principles
 
-1. **Single source of truth** — derive from code and `metrics.yaml`; do not hand-write facts that can be extracted
+1. **Single source of truth** — derive from code and `config/default-config.yaml`; do not hand-write facts that can be extracted
 2. **Freshness timestamps** on generated docs
 3. **Actionable** — setup commands must actually work
 4. **Cross-reference** — link related docs; keep `intent/`, `specs/`, `docs/` consistent with each other

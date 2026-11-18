@@ -43,7 +43,7 @@ pip-licenses --format=markdown           # only if installed; compare with the S
 
 ### 2. Python/exporter checklist
 1. **Secrets in logs** — upstream error bodies are logged on failure (required); verify headers, tokens, PINs and SGTINs are scrubbed first. Never log `HMIP_AUTH_TOKEN`, `HMIP_ACCESS_POINT`, request headers or `repr()` of config objects.
-2. **Secrets in config** — token and access-point ID come from env / Podman secret only; none in files, defaults, images, `metrics.yaml` or fixtures. Captured fixtures stay scrubbed and git-ignored.
+2. **Secrets in config** — token and access-point ID come from env / Podman secret only; none in files, defaults, images, `config.yaml` or fixtures. Captured fixtures stay scrubbed and git-ignored.
 3. **Deserialization** — `yaml.safe_load` only; no `pickle`, `marshal`, `eval`, `exec`, `yaml.load`.
 4. **Outbound calls (SSRF)** — upstream base URL is fixed or validated; no URL built from request input; explicit timeouts on every HTTP call; TLS verification never disabled (`verify=False`).
 5. **Inbound surface** — only `/metrics`, `/health` and an optional `/status` without secrets; debug routes (`pprof`, docs, `/status` internals) off unless `DEBUG_ROUTES=true`; no state-changing routes; the exporter never writes to the heating system.
