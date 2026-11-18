@@ -48,7 +48,7 @@ def in_other_checkout(path: str) -> bool:
 
 
 def in_temp(path: str) -> bool:
-    """Temp files are fine (scratchpads), but never another worktree that happens to live in /tmp."""
+    """Temp files are fine (scratchpads), but not another worktree that lives in /tmp."""
     real = os.path.realpath(path)
     in_tmp = any(real == t or real.startswith(t + os.sep) for t in TEMP_DIRS)
     return in_tmp and not in_other_checkout(real)
