@@ -348,7 +348,7 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 - **C3. `low_since` on first sight is approximate.** The API gives no timestamp for when `lowBat` began; the exporter records when it first saw it. Same for the one device currently low (jekabs display sensor).
 - **C4. Stale `lowBat` on unreachable devices.** The cloud reports last-known values; a dead accumulator can show `unreach` before or without `lowBat`. R13 freezes history while unreachable. Three devices are unreachable right now in the capture (a radiator thermostat, the `girts` display sensor, the circulation-pump switch): alerts will fire on day one.
 - **C5. Floor valve naming.** Floor channels are named `<room> floor-valve` (not individually addressable devices); two channels in one room would collide: handled by C1.
-- **C6. `FileSource` ships in the production image.** Small and read-only; alternative is test-only injection. Kept so the container smoke test uses the real image.
+- **C6. `FileSource` ships in the production image (decided by owner: include).** Read-only, off unless `SOURCE_KIND=file`; the container smoke test, demos and credential-free trials run the real image against a fixture file.
 - **C7. Library behaviour.** `download_configuration_async` and the `init_async` signature were read from `homematicip` 2.23.1 source; the websocket and library object model are unused. The pinned version plus the fixture protect against API drift.
 - **C8. Rate limiting.** The library's own rate limiter stays on; 30 s polling downloads about 130 KB each time (about 15 MB/hour). Acceptable; raise the interval if the cloud throttles.
 - **C9. RSSI unit.** `dBm` is not an SI base unit but is the conventional Prometheus choice for radio level.
