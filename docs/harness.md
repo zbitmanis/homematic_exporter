@@ -30,9 +30,9 @@ Suggested flow per module: `architect` → `implementer` → `python-build-resol
 ## Harness suggestions
 
 - **Hooks** (`.claude/settings.json`, in place): after every `.py` edit run `ruff format` and `ruff check` on the file (fast, file-scoped; exit 2 returns the error to the agent; skipped if ruff is absent). mypy and full tests at commit/PR.
-- **To add:** `PreToolUse` hook blocking edits outside the agent's owned module (read the module from an env var set per worktree); block edits to `docs/sbom/sbom.cdx.json` and pinned requirements by hand.
-- **Worktrees:** `claude --worktree source`, `--worktree state`, `--worktree metrics`. Start with three sessions.
-- **Evals:** `evals/*.json` of 20-50 real tasks with `check.sh` acceptance (e.g. "add metric via YAML only", "battery metric appears for fixture device"), run in CI on any change to CLAUDE.md, rules, agents or hooks. Each incident adds an eval. `harness-optimizer` owns tuning.
+- **Built (task 1c):** `.claude/ownership.yaml` (single source of truth), the `ownership` CI check (`scripts/check_ownership.py`, rules and checker taken from the base branch, branch scheme `feat|fix/<name>`), the path-guard `PreToolUse` hook (`.claude/hooks/path_guard.py`: blocks module agents outside their module and worktree, fails closed for them, only warns the coordinator about shared contracts) and `scripts/new_module_worktree.sh`. **Still open:** block hand edits to `docs/sbom/sbom.cdx.json` and `requirements*.txt` for coordinator edits too; make `ownership` a required status check (owner action).
+- **Worktrees:** `scripts/new_module_worktree.sh state|metrics|source|app`, one session each (writes the `.hmx-module` marker the hook needs). Start with three sessions.
+- **Evals (planned, `evals/` does not exist yet):** `evals/*.json` of 20-50 real tasks with `check.sh` acceptance (e.g. "add metric via YAML only", "battery metric appears for fixture device"), run in CI on any change to CLAUDE.md, rules, agents or hooks. Each incident adds an eval. `harness-optimizer` owns tuning.
 - **Maintain:** `bands.yaml` later, mapping poll-error and staleness bands to actions.
 
 ## Deployment harness

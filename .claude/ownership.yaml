@@ -1,0 +1,50 @@
+# Module ownership (spec 12.1). Single source of truth, read by
+#   - scripts/check_ownership.py  (CI; reads this file from the base branch, not from the PR)
+#   - .claude/hooks/path_guard.py (early warning inside Claude Code worktrees)
+# Restricted YAML subset on purpose (lists of quoted strings, one level of maps, comments on
+# their own lines) so the hook runs with a bare Python and no PyYAML.
+version: 1
+
+# Every PR branch must start with one of these (owner's scheme: feat|fix/name). Anything else fails.
+branch_prefixes:
+  - "feat/"
+  - "fix/"
+
+# A branch named feat/<module> or fix/<module>[-or-/anything] may change ONLY these paths.
+modules:
+  state:
+    - "src/homematic_exporter/state/**"
+    - "tests/state/**"
+    - "specs/plans/state.md"
+  metrics:
+    - "src/homematic_exporter/metrics/**"
+    - "tests/metrics/**"
+    - "specs/plans/metrics.md"
+    - "config/default-config.yaml"
+  source:
+    - "src/homematic_exporter/source/**"
+    - "tests/source/**"
+    - "specs/plans/source.md"
+  app:
+    - "src/homematic_exporter/app/**"
+    - "tests/app/**"
+    - "tests/e2e/**"
+    - "specs/plans/app.md"
+
+# Shared contracts: a change needs specs/spec.md in the same PR, and the PR may not touch module code.
+contract_files:
+  - "src/homematic_exporter/contracts.py"
+  - "src/homematic_exporter/config_models.py"
+  - "src/homematic_exporter/redact.py"
+contract_requires:
+  - "specs/spec.md"
+module_code:
+  - "src/homematic_exporter/state/**"
+  - "src/homematic_exporter/metrics/**"
+  - "src/homematic_exporter/source/**"
+  - "src/homematic_exporter/app/**"
+
+# For these YAML files a module branch may change ONLY the listed top-level sections; anything else
+# (including new top-level keys) fails the check. metrics may edit only the `metrics:` list.
+editable_sections:
+  config/default-config.yaml: [metrics]

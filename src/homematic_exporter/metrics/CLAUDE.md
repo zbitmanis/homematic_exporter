@@ -13,3 +13,4 @@ Rules:
 - Missing source values remove the series instead of exporting stale numbers; log a warning for a metric with zero series on two consecutive updates (C11).
 - Battery metrics read `BatteryRecord`; history itself lives in `state`.
 - Tests: every R19 error class with its key path; golden exposition text from a **hand-built `Snapshot`** (not the fixture-through-parser path, which is task 4); extras added by config only; config resolution order; no secrets in errors.
+- Allowed paths for this module are enforced by `.claude/ownership.yaml` (CI check and path-guard hook); anything else goes under "Requests" in your plan.

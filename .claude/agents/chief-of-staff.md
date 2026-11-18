@@ -19,7 +19,7 @@ You coordinate several coding agents building the exporter in parallel. You plan
 ## Your Role
 
 - Read `docs/sbom/components.md` (module ownership), `specs/spec.md`, `specs/plan.md`, `intent/`, `CLAUDE.md`
-- Assign one module per agent and per git worktree (`claude --worktree <module>`); never two agents on the same module
+- Assign one module per agent and per git worktree created with `scripts/new_module_worktree.sh <module>` (it writes the marker the path-guard hook needs); never two agents on the same module
 - Keep the shared contract (`contracts.py`) small and landed first; flag any interface change that needs a `specs/spec.md` change
 - Track status: which module is in progress, blocked, ready for review, merged
 - Surface open questions and decisions that only the owner can make

@@ -8,6 +8,7 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - Test: `pytest -q` (expect all passed, no network)
 - Lint: `ruff check . && ruff format --check .` (expect no output / "already formatted")
 - Types: `mypy src tests` (expect "Success: no issues found")
+- Ownership: `python scripts/check_ownership.py --base origin/main --branch $(git branch --show-current)` (expect `ownership ok`)
 - Audit: `pip-audit -r requirements.txt` and `python scripts/check_licenses.py` (licence allowlist; expect `homematicip` listed as EXCEPTION)
 - E2E: `pytest -m e2e tests/e2e`
 - Run: `uvicorn homematic_exporter.app:create_app --factory --port 9100`
@@ -15,7 +16,7 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 ## Architecture
 - Modules under `src/homematic_exporter/`: `source`, `state`, `metrics`, `app`. Shared contracts: `contracts.py`, `config_models.py`, `redact.py` (scrub). Modules never import each other (`tests/test_import_boundaries.py`).
 - Poll loop (asyncio background task) updates metrics; scrapes read cache only. Never call the source from a request handler.
-- Mapping is config: a mounted `config.yaml` (default `/etc/homematic-exporter/config/config.yaml`, bundled fallback) holds model names, raw field names, channel types, metric definitions and tuning; adding a metric or numeric field must not need Python changes. Joins, naming, battery history and derived metrics stay in code. Validate with `python -m homematic_exporter.check_config`. See `specs/spec.md` 5.1.
+- Mapping is config: a mounted `config.yaml` (default `/etc/homematic-exporter/config/config.yaml`, bundled fallback) holds model names, raw field names, channel types, metric definitions and tuning; adding a metric or numeric field must not need Python changes. Joins, naming, battery history and derived metrics stay in code. Validate with `python -m homematic_exporter.check_config` (planned, task 4). See `specs/spec.md` 5.1.
 - Config is env vars with defaults; no hardcoded URLs, ports, paths or intervals.
 - Lifespan-managed shutdown: the poll task is cancelled and awaited on app shutdown.
 
@@ -30,7 +31,8 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - State dir 0700, files 0600. Read-only integration: no writes to the heating system.
 
 ## Workflow
-- One agent = one module = one worktree (`claude --worktree <module>`). Edit only your module's paths.
+- One agent = one module = one worktree. Edit only your module's paths (`.claude/ownership.yaml`).
+- Start module work **only** with `scripts/new_module_worktree.sh <module> [branch]` (worktree, `feat/<module>` branch, `.hmx-module` marker). `claude --worktree` writes no marker, so the hook would not guard it. The path-guard hook blocks edits outside your module and outside your worktree (it cannot see shell edits or `rm .hmx-module`); the `ownership` CI check is the real enforcement (run from the base branch's copy). Branches must be `feat/<name>` or `fix/<name>`; names that merely start like a module (`feat/state2`) fail. Until the guard is merged to `main`, a worktree from `main` has no marker and no hook.
 - Plan first; commit your module plan `specs/plans/<module>.md` before code (the master `specs/plan.md` is the coordinator's). Update your module plan in the same commit if you deviate.
 - Changing `contracts.py`, `config_models.py` or `redact.py` (or a module interface) requires a `specs/spec.md` change in that commit, in its own small PR merged before dependent work. Phase-2 agents never edit them (spec 12.1).
 - Dependency changes require an SBOM update (`docs/sbom/`), a licence check against the allowlist, and human sign-off. Do not bump versions.

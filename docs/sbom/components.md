@@ -14,6 +14,8 @@ Package root: `src/homematic_exporter/`. One agent owns one module per worktree.
 | metrics | `metrics/` | `config.yaml` schema/validation, metric definitions -> prometheus objects | `load_config`, `Registry.build/update/record_success/record_error/exposition`, `render(config, snapshot, batteries)` | contracts | golden exposition from a hand-built `Snapshot` (the fixture-through-parser golden test is task 4) |
 | app | `app/` | FastAPI, poll loop, env config, logging filter | `create_app(*, settings=None, config=None, source=None, store=None) -> FastAPI` (env defaults); `/metrics /health /status` | contracts; concrete implementations only in `app/wiring.py` | fake Source, loop-error survival, clean shutdown |
 
+Machine-readable ownership: `.claude/ownership.yaml`, enforced by the `ownership` CI check and the path-guard hook; keep this table and that file in sync. Contract changes (`contracts.py`, `config_models.py`, `redact.py`) need `specs/spec.md` in the same PR.
+
 Dependency direction: `app` wires concrete `source`, `state`, `metrics` and depends only on `contracts` types. Other modules never import each other's concrete classes.
 
 Parallel-safe split: land `contracts.py` first (small, human-reviewed); then source, state and metrics are built simultaneously; app against fakes; e2e last.

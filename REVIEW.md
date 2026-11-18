@@ -6,7 +6,7 @@ Python changes go through `python-reviewer` (`fastapi-reviewer` for `app/`), the
 1. **Correctness:** matches spec; poll loop survives errors; scrapes never hit the source.
 2. **Security:** no token/PIN in logs, metrics or `/status`; state perms 0700/0600; `yaml.safe_load` only, no blocking I/O in async code; debug routes off by default.
 3. **Compliance:** metric naming and units; label cardinality; meta-metrics present; SBOM updated if dependencies changed; licence of any new dependency or copied file checked and recorded (allowlist; `THIRD_PARTY_NOTICES.md`).
-4. **Boundaries:** change touches only the owning module; `contracts.py` / `config_models.py` / `redact.py` changes have a spec change and their own PR; no cross-module imports.
+4. **Boundaries:** change touches only the owning module (the `ownership` CI check enforces it); `contracts.py` / `config_models.py` / `redact.py` changes have a spec change and their own PR; no cross-module imports.
 
 ## Severity
 - **Important (blocks merge):** any pass failure above, weakened or deleted tests, new dependency without SBOM entry.

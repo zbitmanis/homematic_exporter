@@ -8,3 +8,4 @@ Owns: persistence on the mounted volume (battery history). The auth token is NOT
 - Persists per-device battery history (low-since, last-replaced), keyed by device name, so it survives restarts.
 - Never echo values in logs or exceptions.
 - Tests use `tmp_path`, including permission assertions.
+- Allowed paths for this module are enforced by `.claude/ownership.yaml` (CI check and path-guard hook); anything else goes under "Requests" in your plan.

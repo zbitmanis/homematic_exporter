@@ -8,3 +8,4 @@ Plan: `specs/plans/app.md`. Owns: FastAPI app, poll loop, env config, logging fi
 - After each poll call the registry port: `record_success(timestamp, duration)` or `record_error()`. The meta-metrics themselves are defined and owned by `metrics`.
 - Single replica only; do not add locking to pretend otherwise.
 - Tests use a fake `Source`: loop survives failures, `/metrics` never calls the source, shutdown cancels the task cleanly.
+- Allowed paths for this module are enforced by `.claude/ownership.yaml` (CI check and path-guard hook); anything else goes under "Requests" in your plan.

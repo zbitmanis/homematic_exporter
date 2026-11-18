@@ -25,6 +25,31 @@ jobs:
       - if: hashFiles('tests/**/*.py') != ''
         run: pytest -q
 
+  ownership:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6   # TODO pin by SHA
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6   # TODO pin by SHA
+        with:
+          python-version-file: .python-version
+      - run: pip install "$(grep -i '^pyyaml==' requirements.txt)"
+      - name: Check module ownership (rules are read from the base branch)
+        env:   # branch names go through env, never into the script text
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # run the BASE branch's copy of the checker, not the PR's own (a PR could rewrite it)
+          mkdir -p "$RUNNER_TEMP/own"
+          if git show "origin/${BASE_REF}:scripts/check_ownership.py" > "$RUNNER_TEMP/own/check_ownership.py" \
+             && git show "origin/${BASE_REF}:scripts/ownership_lib.py" > "$RUNNER_TEMP/own/ownership_lib.py"; then
+            python "$RUNNER_TEMP/own/check_ownership.py" --repo . --base "origin/${BASE_REF}" --branch "${HEAD_REF}"
+          else
+            echo "notice: base branch has no ownership checker yet; check skipped"
+          fi
+
   build:
     needs: gate
     if: github.event.action != 'closed'
