@@ -1,6 +1,6 @@
 ---
 name: python-reviewer
-description: Expert Python code reviewer specializing in PEP 8 compliance, Pythonic idioms, type hints, security, and performance. Use for all Python code changes. MUST BE USED for Python projects.
+description: "Expert Python code reviewer specializing in PEP 8 compliance, Pythonic idioms, type hints, security, and performance. Use for all Python code changes. MUST BE USED for Python projects."
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -18,7 +18,7 @@ You are a senior Python code reviewer ensuring high standards of Pythonic code a
 
 When invoked:
 1. Run `git diff -- '*.py'` to see recent Python file changes
-2. Run static analysis tools if available (ruff, mypy, pylint, black --check)
+2. Run the project gate: `ruff check .`, `ruff format --check .`, `mypy src` (pylint/bandit only if installed)
 3. Focus on modified `.py` files
 4. Begin review immediately
 
@@ -70,11 +70,11 @@ When invoked:
 ## Diagnostic Commands
 
 ```bash
-mypy .                                     # Type checking
-ruff check .                               # Fast linting
-black --check .                            # Format check
-bandit -r .                                # Security scan
-pytest --cov=app --cov-report=term-missing # Test coverage
+mypy src                                   # Type checking
+ruff check .                               # Linting
+ruff format --check .                      # Format check (ruff is the formatter of record)
+ruff check --select S src                  # Security rules (bandit set built into ruff)
+pytest -q                                  # Tests (add --cov=homematic_exporter if pytest-cov is approved)
 ```
 
 ## Review Output Format
@@ -94,9 +94,9 @@ Fix: What to change
 
 ## Framework Checks
 
-- **Django**: `select_related`/`prefetch_related` for N+1, `atomic()` for multi-step, migrations
-- **FastAPI**: CORS config, Pydantic validation, response models, no blocking in async
-- **Flask**: Proper error handlers, CSRF protection
+- **FastAPI/asyncio** (this project): no blocking calls in `async def`, tasks keep a reference and are cancelled on shutdown, `CancelledError` is never swallowed, Pydantic validation at boundaries (also run `fastapi-reviewer` for `app/`)
+- **Exporter**: `yaml.safe_load` only, no secrets in logs, labels limited to `room`/`device_type`/`device`, scrapes read cache only
+- Other frameworks (Django, Flask) are out of scope here
 
 ## Reference
 

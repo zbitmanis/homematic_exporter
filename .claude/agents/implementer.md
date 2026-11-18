@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements one module of the exporter from specs/plan.md in Python. Use for build tasks scoped to source/, state/, metrics/ or app/.
+description: "Implements one module of the exporter from specs/plan.md in Python. Use for build tasks scoped to source/, state/, metrics/ or app/."
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: sonnet
 ---

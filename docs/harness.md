@@ -2,12 +2,12 @@
 
 ## Agent roster (`.claude/agents/`)
 
-Imported from everything-claude-code, adapted where noted. Rules in `.claude/rules/common` and `.claude/rules/python`; skills `python-patterns`, `python-testing`, `fastapi-patterns` in `.claude/skills/`.
+Imported from everything-claude-code and rewritten for Python (no npm/Node/React/browser content remains); Sonnet is the ceiling. Rules in `.claude/rules/common` and `.claude/rules/python`; skills `python-patterns`, `python-testing`, `fastapi-patterns` in `.claude/skills/`.
 
 | Agent | Model | Role in this project | Stage |
 |---|---|---|---|
 | architect | sonnet | Design of module boundaries and `contracts.py`; ADRs for open questions (HmIP client choice) | Design |
-| chief-of-staff | haiku | **Adapted:** coordinator of parallel module worktrees; no messaging | Plan/Build |
+| chief-of-staff | haiku | Rewritten: coordinator of parallel module worktrees; no messaging | Plan/Build |
 | implementer | sonnet | Builds one module, tests first (project agent) | Build |
 | python-build-resolver | sonnet | **New (not in ECC):** fixes ruff, mypy and pytest-collection failures with minimal diffs | Build |
 | code-simplifier | sonnet | Post-implementation clean-up of recent changes | Build |
@@ -16,7 +16,7 @@ Imported from everything-claude-code, adapted where noted. Rules in `.claude/rul
 | code-reviewer | sonnet | General quality and maintainability pass | Review |
 | security-reviewer | sonnet | Secrets, token handling, SSRF, container hardening | Review |
 | performance-optimizer | sonnet | Poll cost, memory, event-loop blocking, scrape latency (`cProfile`, `tracemalloc`) | Test |
-| e2e-runner | sonnet | **Adapted:** app + fake upstream + HTTP assertions, not browser | Test |
+| e2e-runner | sonnet | Rewritten: app + fake upstream + HTTP assertions, container smoke test; no browser tooling | Test |
 | verifier | sonnet | Runs the app and checks `/metrics` before "done" (project agent) | Test |
 | doc-updater | haiku | Keeps CLAUDE.md, SBOM manifest, harness and spec catalogue in sync after merges (documentation only) | Maintain |
 | harness-optimizer | sonnet | Tunes this harness (CLAUDE.md, hooks, agents) from eval results | Maintain |

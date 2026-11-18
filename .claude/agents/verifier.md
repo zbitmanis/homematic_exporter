@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Runs the exporter and checks a change works before the session reports done. Use after implementation of any module.
+description: "Runs the exporter and checks a change works before the session reports done. Use after implementation of any module."
 tools: Read, Bash, Glob, Grep
 model: sonnet
 ---

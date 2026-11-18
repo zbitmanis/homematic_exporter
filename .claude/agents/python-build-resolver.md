@@ -1,6 +1,6 @@
 ---
 name: python-build-resolver
-description: Python build, lint, type-check and import/test-collection error resolution specialist. Fixes ruff, mypy and pytest collection/dependency failures with minimal diffs. Use when the build or CI gate fails.
+description: "Python build, lint, type-check and import/test-collection error resolution specialist. Fixes ruff, mypy and pytest collection/dependency failures with minimal diffs. Use when the build or CI gate fails."
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---

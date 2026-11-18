@@ -1,6 +1,6 @@
 ---
 name: fastapi-reviewer
-description: Reviews FastAPI applications for async correctness, dependency injection, Pydantic schemas, security, OpenAPI quality, testing, and production readiness.
+description: "Reviews FastAPI applications for async correctness, dependency injection, Pydantic schemas, security, OpenAPI quality, testing, and production readiness."
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -56,6 +56,13 @@ You are a senior FastAPI reviewer focused on production Python APIs.
 - Test overrides targeting the wrong dependency.
 - `allow_origins=["*"]` combined with credentialed CORS.
 - Missing request validation for write endpoints.
+
+### Exporter-specific (High)
+
+- `/metrics`, `/health` or `/status` calling the upstream source instead of reading the cache.
+- Poll task started outside the lifespan, without a retained reference, or not cancelled and awaited on shutdown.
+- Debug routes (`/docs` internals, `pprof`-like endpoints, verbose `/status`) enabled by default.
+- Secrets (token, PIN, SGTIN) reachable through any response, log line or exception message.
 
 ### Medium
 
