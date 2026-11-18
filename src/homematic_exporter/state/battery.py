@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 KEY = "battery"
 _VERSION = 1
-# Plausible ranges for stored values (1970..2100, 2000..2100); anything else is malformed.
+# Plausible ranges for stored values and for `now` (1970..2100); anything else is malformed.
 MIN_TIMESTAMP = 0.0
 MAX_TIMESTAMP = 4102444800.0
-MIN_DAY = date(2000, 1, 1)
+MIN_DAY = date(1970, 1, 1)
 MAX_DAY = date(2100, 12, 31)
 LOG_INTERVAL_SECONDS = 900.0
 
@@ -85,7 +85,7 @@ class BatteryHistory:
 
     def update(self, devices: Sequence[Device], now: float) -> list[BatteryRecord]:
         try:
-            if not math.isfinite(now):
+            if not math.isfinite(now) or not MIN_TIMESTAMP <= now <= MAX_TIMESTAMP:
                 raise ValueError
             today = datetime.fromtimestamp(now, UTC).date()
             cutoff = today - self._retention  # all date maths up front: no partial mutation

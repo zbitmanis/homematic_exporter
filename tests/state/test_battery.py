@@ -357,6 +357,10 @@ def test_restart_after_failed_save_does_not_hide_change() -> None:
         -62135596800.0,
         -62135596800.0 + 86400,
         253402300800.0,
+        -1.0,
+        4102444800.0000005,
+        5e10,
+        32503680000.0,  # year 3000
     ],
 )
 def test_invalid_now_raises_without_mutation(
@@ -434,9 +438,9 @@ HIGH_BOUND = 4102444800.0
         ("last_replaced", HIGH_BOUND, True),
         ("last_replaced", -0.5, False),
         ("last_replaced", HIGH_BOUND + 1, False),
-        ("last_seen_day", "2000-01-01", True),
+        ("last_seen_day", "1970-01-01", True),
         ("last_seen_day", "2100-12-31", True),
-        ("last_seen_day", "1999-12-31", False),
+        ("last_seen_day", "1969-12-31", False),
         ("last_seen_day", "2101-01-01", False),
     ],
 )
@@ -445,3 +449,13 @@ def test_stored_value_bounds(store: MemStore, field: str, value: object, kept: b
     h = BatteryHistory(store, Tuning(state_retention_days=100000))
     h.update([], T0)
     assert (names(store) == ["a"]) is kept
+
+
+@pytest.mark.parametrize("bound", [0.0, 4102444800.0])
+def test_bounds_of_now_are_accepted_and_survive_reload(store: MemStore, bound: float) -> None:
+    rec = one(BatteryHistory(store, Tuning()).update([dev(low=True)], bound))
+    assert rec.low_since == bound
+    reloaded = BatteryHistory(store, Tuning())
+    store.saves = 0
+    assert one(reloaded.update([dev(low=True)], bound)).low_since == bound
+    assert names(store) == ["kitchen thermostat"]

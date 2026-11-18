@@ -42,7 +42,7 @@ class FileStateStore:
             raise StateDirError("state directory parent does not exist") from None
         except OSError as exc:
             raise StateDirError(f"cannot prepare state directory: {type(exc).__name__}") from None
-        if not stat.S_ISDIR(st.st_mode):
+        if not stat.S_ISDIR(st.st_mode):  # defensive: only reachable through a race
             raise StateDirError("state path is not a directory")
         if stat.S_IMODE(st.st_mode) & 0o077:
             raise StateDirError("state directory permissions are too loose (need 0700)")
@@ -79,10 +79,17 @@ class FileStateStore:
             logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
             return None
         try:
-            with os.fdopen(fd, "rb") as handle:
-                if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-                    logger.warning("state key %r is not a regular file; starting empty", key)
-                    return None
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                os.close(fd)
+                logger.warning("state key %r is not a regular file; starting empty", key)
+                return None
+            handle = os.fdopen(fd, "rb")  # takes ownership of fd on success
+        except OSError as exc:
+            os.close(fd)
+            logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
+            return None
+        try:
+            with handle:
                 raw = handle.read(MAX_STATE_BYTES + 1)
         except OSError as exc:
             logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)

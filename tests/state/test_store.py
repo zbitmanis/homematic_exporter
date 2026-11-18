@@ -333,3 +333,21 @@ def test_unsafe_keys_rejected(tmp_path: Path, key: str) -> None:
 def test_saved_file_is_json(tmp_path: Path) -> None:
     FileStateStore(tmp_path / "s").save("k", {"a": None})
     assert json.loads((tmp_path / "s" / "k.json").read_text()) == {"a": None}
+
+
+@pytest.mark.skipif(not os.path.isdir("/dev/fd"), reason="no /dev/fd")
+def test_rejected_state_files_do_not_leak_descriptors(tmp_path: Path) -> None:
+    store = FileStateStore(tmp_path / "s")
+    (tmp_path / "s" / "k.json").mkdir()
+    before = len(os.listdir("/dev/fd"))
+    for _ in range(200):
+        assert store.load("k") is None
+    assert len(os.listdir("/dev/fd")) == before
+
+
+def test_dangling_symlink_at_state_path(tmp_path: Path) -> None:
+    link = tmp_path / "s"
+    link.symlink_to(tmp_path / "missing")
+    with pytest.raises(StateDirError) as exc:
+        FileStateStore(link)
+    assert str(tmp_path) not in str(exc.value)
