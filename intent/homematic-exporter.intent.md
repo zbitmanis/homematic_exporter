@@ -1,7 +1,7 @@
 # Intent: Homematic IP heating Prometheus exporter
 
 - **Author:** andris
-- **Status:** accepted 2026-11-18 (owner); next stage: `specs/spec.md`
+- **Status:** accepted 2026-11-18 (owner); `specs/spec.md` drafted (review pending)
 - **Stage:** Plan (AI-native SDLC)
 
 ## Problem
