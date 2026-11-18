@@ -7,7 +7,7 @@
 ## Files that change
 | Path | Change |
 |---|---|
-| `src/homematic_exporter/metrics/config.py` | `AppConfig` (composes `Tuning`, `ExtractConfig`, metric definitions), `load_config(path)` with R21 fallback order, startup validation errors with key paths (R19) |
+| `src/homematic_exporter/metrics/config.py` | `AppConfig` (composes `Tuning`, `ExtractConfig`, metric definitions), `load_config(path: Path | None = None)` with the R21 resolution (explicit path must exist; `None` = mount path then bundled default; never reads the environment), startup validation errors with key paths (R19) |
 | `src/homematic_exporter/metrics/registry.py` | `Registry.build/update/record_success/record_error/exposition`, `render(config, snapshot, batteries)`; private `CollectorRegistry`; series removal; derived (6.5) and meta (6.6) metrics; `data_age` absent before first success |
 | `config/default-config.yaml` | **only the `metrics:` list** (spec 6.2-6.4); `extract`/`tuning` are fixed |
 | `tests/metrics/` | hand-built `Snapshot` golden exposition, validation errors, extras-only metric, fallback order |

@@ -8,9 +8,9 @@
 | Path | Change |
 |---|---|
 | `src/homematic_exporter/source/parser.py` | `parse_snapshot(raw, now, extract, on_collision)` per spec section 4 |
-| `src/homematic_exporter/source/file_source.py` | `FileSource(path, extract)` |
+| `src/homematic_exporter/source/file_source.py` | `FileSource(path, extract)`; both implement `Source.fetch(on_collision)`; the source logs one WARNING per new collision (names only) |
 | `src/homematic_exporter/source/cloud.py` | `CloudSource(access_point, token, timeout, extract)` over `homematicip` 2.23.1 `AsyncHome`; builds `UpstreamError` with a body scrubbed by `redact.scrub` |
-| `tests/source/` | parser tests on `mini_state.json` (+ `collision_state`), `default_extract` fixture; `CloudSource` tests with a fake home object |
+| `tests/source/` | parser tests on the shared `tests/fixtures/mini_state.json` (+ `collision_state`; **do not edit the shared fixture**, request changes), `default_extract` fixture; `CloudSource` tests with a fake home object |
 
 ## Order of work
 1. Parser tests (rooms, device-to-room joins, naming, collision modes, valves, contacts, extras, `None` handling, unmapped model), then `parse_snapshot`.

@@ -1,18 +1,20 @@
-"""Module boundaries (docs/sbom/components.md).
+"""Module boundaries (docs/sbom/components.md, spec 12.1).
 
 Modules may share only contracts, config_models and redact.
-
-`source`, `state` and `metrics` must not import each other or `app`. `app` and the top-level tool
-modules (check_config, generate_config) may import everything.
+- `source`, `state`, `metrics` must not import each other or `app`.
+- `app` may import the others **only in `app/wiring.py`**; the rest of `app` uses its own ports.
+- `tests/<module>/` may import only its own module (plus shared code); `tests/e2e/` and the
+  top-level tests are unrestricted.
+Top-level tool modules (check_config, generate_config) may import everything.
 """
 
 import ast
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent / "src" / "homematic_exporter"
+TESTS = Path(__file__).parent
 MODULES = {"source", "state", "metrics", "app"}
-SHARED = {"contracts", "config_models", "redact"}
-UNRESTRICTED = {"app"}
+WIRING = {"app/wiring.py"}
 
 
 def imported_modules(path: Path, package: str) -> set[str]:
@@ -36,34 +38,54 @@ def imported_modules(path: Path, package: str) -> set[str]:
     return found
 
 
-def violations(root: Path) -> list[str]:
+def violations(src_root: Path, tests_root: Path) -> list[str]:
     bad: list[str] = []
-    for module in sorted(MODULES - UNRESTRICTED):
-        for path in sorted((root / module).rglob("*.py")):
-            rel = path.relative_to(root.parent).with_suffix("")
-            package = ".".join(rel.parts[:-1])
+    for module in sorted(MODULES):
+        for path in sorted((src_root / module).rglob("*.py")):
+            rel = path.relative_to(src_root)
+            if module == "app" and rel.as_posix() in WIRING:
+                continue
+            package = ".".join(path.relative_to(src_root.parent).with_suffix("").parts[:-1])
             for other in imported_modules(path, package):
                 if other in MODULES and other != module:
-                    bad.append(f"{path.relative_to(root)} imports homematic_exporter.{other}")
+                    bad.append(f"src/{rel} imports homematic_exporter.{other}")
+        for path in sorted((tests_root / module).rglob("*.py")):
+            package = ".".join(path.relative_to(tests_root.parent).with_suffix("").parts[:-1])
+            for other in imported_modules(path, package):
+                if other in MODULES and other != module:
+                    bad.append(
+                        f"tests/{path.relative_to(tests_root)} imports homematic_exporter.{other}"
+                    )
     return bad
 
 
 def test_real_tree_has_no_cross_module_imports() -> None:
-    assert violations(ROOT) == []
+    assert violations(ROOT, TESTS) == []
 
 
 def test_checker_detects_violations(tmp_path: Path) -> None:
-    pkg = tmp_path / "homematic_exporter"
-    (pkg / "source").mkdir(parents=True)
-    (pkg / "state").mkdir()
-    (pkg / "source" / "a.py").write_text("from homematic_exporter.state import x\n")
-    (pkg / "source" / "b.py").write_text("from ..state import y\n")
-    (pkg / "source" / "c.py").write_text(
+    src = tmp_path / "src" / "homematic_exporter"
+    tests = tmp_path / "tests"
+    for d in (src / "source", src / "state", src / "app", tests / "metrics", tests / "app"):
+        d.mkdir(parents=True)
+    (src / "source" / "a.py").write_text("from homematic_exporter.state import x\n")
+    (src / "source" / "b.py").write_text("from ..state import y\n")
+    (src / "source" / "c.py").write_text(
         "from homematic_exporter.contracts import Room\nimport os\n"
     )
-    (pkg / "state" / "d.py").write_text("import homematic_exporter.metrics.registry\n")
-    found = violations(pkg)
+    (src / "state" / "d.py").write_text("import homematic_exporter.metrics.registry\n")
+    (src / "app" / "wiring.py").write_text("from homematic_exporter.source import CloudSource\n")
+    (src / "app" / "main.py").write_text("from homematic_exporter.metrics import Registry\n")
+    (tests / "metrics" / "test_x.py").write_text(
+        "from homematic_exporter.source import parse_snapshot\n"
+    )
+    (tests / "app" / "test_y.py").write_text("from homematic_exporter.app import create_app\n")
+    found = violations(src, tests)
     assert any("source/a.py" in v for v in found)
     assert any("source/b.py" in v for v in found)
     assert any("state/d.py" in v for v in found)
+    assert any("app/main.py" in v for v in found)  # only wiring.py may import concrete modules
+    assert any("metrics/test_x.py" in v for v in found)  # tests/<module> stay in their module
     assert not any("source/c.py" in v for v in found)
+    assert not any("wiring.py" in v for v in found)
+    assert not any("test_y.py" in v for v in found)

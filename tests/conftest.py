@@ -8,7 +8,7 @@ import yaml
 
 from homematic_exporter.config_models import ExtractConfig, Tuning
 
-FIXTURES = Path(__file__).parent / "source" / "fixtures"
+FIXTURES = Path(__file__).parent / "fixtures"  # shared, tracked; the local capture is not here
 DEFAULT_CONFIG = Path(__file__).parent.parent / "config" / "default-config.yaml"
 
 

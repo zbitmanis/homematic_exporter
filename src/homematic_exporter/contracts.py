@@ -87,9 +87,9 @@ class UpstreamError(Exception):
         self.body = body
 
 
-# How `parse_snapshot` treats two devices with the same name in one room (spec C1): `error` raises
-# NameCollisionError (used for the first successful poll, i.e. startup); `suffix` appends -2, -3
-# ordered by SGTIN and lets the caller log a warning.
+# How a source treats two devices with the same name in one room (spec C1): `error` raises
+# NameCollisionError (the app uses it until the first successful poll, i.e. startup); `suffix`
+# appends -2, -3 ordered by SGTIN and the source logs one WARNING per new collision (names only).
 CollisionPolicy = Literal["error", "suffix"]
 
 
@@ -103,8 +103,12 @@ class NameCollisionError(Exception):
 
 @runtime_checkable
 class Source(Protocol):
-    async def fetch(self) -> Snapshot:
-        """Return the current snapshot; raise UpstreamError on upstream failure."""
+    async def fetch(self, on_collision: CollisionPolicy = "error") -> Snapshot:
+        """Return the current snapshot.
+
+        Raises UpstreamError on upstream failure and NameCollisionError when `on_collision` is
+        "error" and device names collide.
+        """
         ...
 
 

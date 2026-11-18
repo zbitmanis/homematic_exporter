@@ -6,6 +6,7 @@ import pytest
 
 from homematic_exporter.contracts import (
     BatteryRecord,
+    CollisionPolicy,
     Contact,
     Device,
     NameCollisionError,
@@ -105,7 +106,7 @@ def test_upstream_error_carries_status_and_body() -> None:
 
 def test_protocols_are_runtime_checkable() -> None:
     class FakeSource:
-        async def fetch(self) -> Snapshot:
+        async def fetch(self, on_collision: CollisionPolicy = "error") -> Snapshot:
             return Snapshot(0.0, (), (), (), ())
 
     class FakeStore:

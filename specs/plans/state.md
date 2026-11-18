@@ -14,7 +14,7 @@
 
 ## Order of work
 1. Store tests (permissions, atomicity, missing/corrupt file), then store.
-2. Battery transition tests (first sight low, false to true, true to false, unreachable freeze, first sight while unreachable, `low_battery=None`, restart reload, prune by `tuning.state_retention_days`, returns only current devices), then `BatteryHistory`.
+2. Battery tests following spec section 8 exactly (record created on first sight for every device, first sight low vs unreachable vs `None`, transitions, unreachable freeze but still seen, `last_seen_day` at day granularity with at most one extra write per day, prune by `tuning.state_retention_days`, returns only current devices, restart reload), then `BatteryHistory`.
 
 ## Risks
 - A corrupt state file must not crash the poll loop: decide and test (log and start empty).

@@ -7,13 +7,13 @@ Master plan: task list with **review phases** (below), then the detail of each t
 | # | Task | Branch | Build | Review pipeline (R1-R6) | Status |
 |---|---|---|---|---|---|
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | R1 done, R2/R3 catch-up done (findings planned), R4 skipped, R5 n/a, R6 done | merged `824c8b6`, v1.1.0; fix-up task 1b planned |
-| 1b | review fix-ups: spec clarifications, contracts, fixture, config models, plans (log rows 1-22) | `fix/phase-2-readiness` | built (gate green: 48 tests, `mypy src tests`) | R1 done; R2 architect re-review (P2) in progress; R6 pending | **blocks** 2a-2c until merged |
+| 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | built (gate green: 69 tests, `mypy src tests`) | R1 done; R2/R3 done twice (architect: ready with conditions, closed; security: 2 HIGH found and fixed); R6 pending | **blocks** 2a-2c until merged |
 | 1c | ownership guardrails: path-guard hook, CI check tying contract changes to spec changes, CODEOWNERS | `feat/ownership-guard` | not started | R1-R3, R6 | before or alongside phase 2 |
 | 2a | `state` | `feat/state` | not started | - | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | - | after 1b merges (`specs/plans/metrics.md`) |
 | 2c | `source` | `feat/source` | not started | - | after 1b merges (`specs/plans/source.md`) |
 | 3 | `app` + e2e | `feat/app` | not started | R1-R6 incl. `fastapi-reviewer` and `verifier` | planned |
-| 4 | Dockerfile run, Quadlet, alert rules | `feat/deploy` | not started | R1-R3, R6, then phase review P4 | planned |
+| 4 | tools and deployment: `check_config`, fixture-to-exposition golden test, Dockerfile run + default config + `APP_VERSION`, Quadlet, alert rules | `feat/deploy` | not started | R1-R3, R6, then phase review P4 | planned |
 | 5 | `generate_config` (R22) | `feat/generate-config` | not started | R1-R4, R6 | planned |
 
 ## Review phases
@@ -22,7 +22,7 @@ Master plan: task list with **review phases** (below), then the detail of each t
 
 | Step | Who | What | Blocks merge if |
 |---|---|---|---|
-| R1 Gate | implementer, then CI | `ruff check`, `ruff format --check`, `mypy src`, `pytest -q`, `pip-audit`, `check_licenses.py`; output pasted in the PR | any failure (CI is authoritative; local runs are on 3.13 until 3.12 is confirmed) |
+| R1 Gate | implementer, then CI | `ruff check`, `ruff format --check`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py`; output pasted in the PR | any failure (CI is authoritative; local runs are on 3.13 until 3.12 is confirmed) |
 | R2 Code review | `python-reviewer`; plus `fastapi-reviewer` for `app`; `code-reviewer` for cross-module diffs | correctness, types, async, spec match | any CRITICAL or HIGH |
 | R3 Security review | `security-reviewer` | secrets, logs, config, state permissions, workflows, image | any CRITICAL or HIGH |
 | R4 Simplify | `code-simplifier` (optional) | behavior-preserving clean-up after R2/R3 are clean; gate re-run | gate fails after the change |
@@ -36,7 +36,7 @@ Rules: the agent that wrote the code never reviews it; reviewers are read-only; 
 | ID | Review | When | Who | Status |
 |---|---|---|---|---|
 | P1 | Intent and spec review | before any code | owner (PRs) | **done** (intent accepted, spec merged) |
-| P2 | Architecture review of module boundaries and contracts | before phase 2 starts | `architect` | **done: NOT READY**, 11 findings (log rows 12-22); re-review after task 1b |
+| P2 | Architecture review of module boundaries and contracts | before phase 2 starts | `architect` | **done: READY WITH CONDITIONS** (2026-11-19); all conditions closed in task 1b (log rows 29-37), not re-checked by the architect a third time; gate and boundary tests pass |
 | P3 | Phase-2 integration review | after `state`, `metrics`, `source` are merged, before `app` | `architect` + `code-reviewer`; golden parse-to-metrics test | planned |
 | P4 | Security review before the first published working image | before the first release that contains a runnable app | `security-reviewer` + owner; secrets handling, image, workflows, live token handling | planned |
 | P5 | Performance review | after `app` | `performance-optimizer`: poll duration, memory soak, series count | planned |
@@ -88,6 +88,15 @@ _Catch-up review of task 1 (merged `824c8b6`), 2026-11-19, run read-only by `pyt
 | 26 | security (re-review) | MEDIUM | Quoted values with spaces or escaped quotes were cut mid-value (`token: "abc def"` kept `def`) | fixed: full quoted-string match with escapes; tests |
 | 27 | security (re-review) | LOW | SGTIN `\b` anchors missed underscore-adjacent IDs (`dev_<sgtin>`), also in `scripts/fixture/dump_state.py` | fixed in both places |
 | 28 | security (re-review) | LOW | Not caught by design: a secret split across lines, fullwidth Unicode keys, bare bearer tokens under 6 characters; the `secrets=` argument covers known secrets exactly | accepted as residual risk (owner to confirm); no ReDoS (100 KB inputs under 20 ms) |
+| 29 | architect (re-review of task 1b) | HIGH | No way to switch the collision policy: `Source.fetch()` took no argument; the warning had no owner; startup-fatal conflicted with R2 | fixed: `Source.fetch(on_collision)` in the contract; the source logs the warning; R2 and C1 define "startup" (first success) and exit non-zero on a collision before it |
+| 30 | architect (re-review) | HIGH | `metrics/CLAUDE.md` stale and self-contradicting (agents load it automatically); `Gauge.set_function` cannot hide data age before the first success | fixed: file rewritten from spec 3; data age via a custom collector; root `CLAUDE.md`, R3 and 6.6 corrected |
+| 31 | architect (re-review) | MEDIUM | `app` had no protocols to use; wiring-only rule not enforced; `plans/app.md` contradicted it | fixed: `app/ports.py` in spec 3 and the plan; import-boundary test enforces `app/wiring.py`-only imports and `tests/<module>` staying inside their module |
+| 32 | architect (re-review) | MEDIUM | Two owners for config resolution (`load_config` and `app` both reading `CONFIG_FILE`) | fixed: `app` reads the env and passes `path`; `load_config(path: Path | None)` resolves and never reads the environment (R21, spec 3) |
+| 33 | architect (re-review) | MEDIUM | Spec 8 contradicted itself (pruning needs last-seen; "save only on change"; create rules; unreachable counts as seen?) | fixed: spec 8 rewritten (`last_seen_day`, one extra write per day, creation and unreachable rules); `plans/state.md` updated |
+| 34 | architect (re-review) | MEDIUM | `mini_state.json` had no protected owner (lived under `tests/source/`) | fixed: moved to `tests/fixtures/`, listed as do-not-edit in spec 12.1 |
+| 35 | architect (re-review) | LOW | No version source for `homematic_exporter_build_info` | fixed: env `APP_VERSION` (default `dev`), set by the image build (task 4) |
+| 36 | architect (re-review) | LOW | Import-boundary test scanned `src/` only | fixed: also scans `tests/<module>/` |
+| 37 | architect (re-review) | LOW | Doc drift (plans/app.md, task numbering, `mypy src`, task 4 scope, `source/CLAUDE.md` httpx, root CLAUDE.md plan.md) | fixed |
 
 Clean results worth keeping: capture file not tracked and not in the image; no secrets, SGTINs or tokens in git history; workflows use `pull_request` (no secrets for forks) and no untrusted text in `run:`; contracts and config models match spec sections 3 and 5.1 field for field; the fixture mirrors the real structure.
 
@@ -105,7 +114,7 @@ Clean results worth keeping: capture file not tracked and not in the image; no s
 | `src/homematic_exporter/contracts.py` | new: `Room`, `Device`, `Valve`, `Contact`, `Snapshot`, `BatteryRecord`, `Extras`, `UpstreamError`, `Source`, `StateStore` (spec 3) |
 | `src/homematic_exporter/config_models.py` | new: `ExtractConfig`, `ValveRule`, `ContactRule`, `ExtraField`, `Tuning` (spec 5.1), strict (`extra=forbid`, frozen) |
 | `src/homematic_exporter/{__init__,source/,state/,metrics/,app/}__init__.py` | new: package skeleton so module branches do not conflict |
-| `tests/source/fixtures/mini_state.json` | new: hand-written, scrubbed fixture (3 rooms, 8 devices) |
+| `tests/source/fixtures/mini_state.json` (moved to `tests/fixtures/` in task 1b) | new: hand-written, scrubbed fixture (3 rooms, 8 devices; 10 after task 1b) |
 | `tests/conftest.py`, `tests/test_contracts.py`, `tests/test_config_models.py`, `tests/test_mini_fixture.py` | new tests |
 | `pyproject.toml` | pytest `pythonpath` adds `.`; asyncio fixture loop scope set |
 | `specs/spec.md`, `CLAUDE.md`, `REVIEW.md`, `docs/sbom/components.md` | `config_models.py` recorded as the second shared contract |
@@ -131,4 +140,4 @@ Clean results worth keeping: capture file not tracked and not in the image; no s
 `ruff check .`, `ruff format --check .`, `mypy src` (strict), `pytest -q` (21 tests), `python scripts/check_licenses.py`: all pass locally (Python 3.13 venv). CI gate on the PR runs the same on 3.12.
 
 ## Next tasks (separate plan entries, can start in parallel after this merges)
-- Task 2a `source`, 2b `state`, 2c `metrics`; then 3 `app`; then 4 e2e/Dockerfile/Quadlet/alerts; then 5 `generate_config`.
+- Tasks 2a `state`, 2b `metrics`, 2c `source` (per-module plans in `specs/plans/`); then 3 `app` + e2e; then 4 tools and deployment; then 5 `generate_config`.
