@@ -94,7 +94,7 @@ Non-goals: Kubernetes manifests, multiple registries in v1.
 Goal: never ship something we are not allowed to ship, and never be surprised by a licence at release time.
 
 Decisions in force:
-1. **This repository is MIT** (`LICENSE`, copyright holder `zbitmanis`).
+1. **This repository is MIT** (`LICENSE`, copyright holder Andris Zbitkovskis).
 2. **`homematicip` is GPL-3.0-or-later** and is accepted. The Docker Hub repo is public, so the published image **is distributed**, and the combined image is under GPL terms for that component. MIT code may be combined with it; the image must carry the GPL notice and a source pointer.
 3. **Copied third-party material** (ECC agents, rules, skills under `.claude/`) is MIT-licensed and attributed in `THIRD_PARTY_NOTICES.md`. Anything else copied into the repo needs the same treatment before it is committed.
 4. **Dependency licence allowlist:** MIT, BSD, Apache-2.0, ISC, PSF, MPL-2.0. Anything else (GPL, LGPL, AGPL, SSPL, unknown, "non-commercial") needs a recorded owner decision in `docs/sbom/components.md`; `homematicip` is the one documented exception.
@@ -147,4 +147,4 @@ Anti-goal: a release that includes a dependency or copied file with an unrecorde
 
 
 **Update 2026-11-18 (CI/CD design):** the pipeline is designed as a **central reusable workflow pair**, built locally first (`release.yml`, `pr-image.yml`) shared across projects, with thin callers here. Design, drafts and risks: `docs/ci/README.md`. Proposed answers to Q8-Q10 live there (Docker Hub variable names as in the reference repo; QEMU for arm64 first, native arm later). Still need the owner's confirmation.
-11. **Licensing follow-ups:** confirm the copyright holder name in `LICENSE` (currently `zbitmanis`); add the SPDX `license` field to `pyproject.toml` when it exists; wire the licence allowlist check into CI (`pip-licenses --allow-only=... --ignore-packages homematicip`); implement the image distribution checklist in the Dockerfile and release workflow.
+11. **Licensing follow-ups:** copyright holder in `LICENSE` is confirmed (Andris Zbitkovskis); add the SPDX `license` field to `pyproject.toml` when it exists; wire the licence allowlist check into CI (`pip-licenses --allow-only=... --ignore-packages homematicip`); implement the image distribution checklist in the Dockerfile and release workflow.
