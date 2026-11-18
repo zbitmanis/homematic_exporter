@@ -11,3 +11,4 @@ config.ini
 # fixture capture outputs (local only, review before ever committing)
 tests/source/fixtures/state.scrubbed.json
 tests/source/fixtures/state.summary.md
+.hmx-module

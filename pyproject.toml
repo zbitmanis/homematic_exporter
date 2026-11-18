@@ -21,8 +21,8 @@ exclude = ["*.md"]   # do not reformat code blocks inside documentation
 select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]  # S = bandit rules
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]            # assert is fine in tests
-"scripts/**" = ["S101", "E501", "ASYNC240"]   # throwaway spike/helper scripts
+"tests/**" = ["S101", "S603", "S607"]  # assert is fine; tests run git and python subprocesses
+"scripts/**" = ["S101", "S603", "S607", "E501", "ASYNC240"]  # helper scripts run fixed git commands
 
 [tool.mypy]
 python_version = "3.12"
