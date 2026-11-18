@@ -9,6 +9,7 @@ Output (default dir tests/source/fixtures/):
     state.summary.md      device/group inventory and which heating/battery fields exist
 Read-only: only downloads the configuration, never writes to the heating system.
 """
+
 import asyncio
 import json
 import os
@@ -18,13 +19,22 @@ from collections import Counter
 from pathlib import Path
 
 SGTIN_RE = re.compile(r"\b[0-9A-F]{24}\b")
-UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
 MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b")
 DROP_KEYS = {"clients", "authToken", "pin", "clientAuthToken", "clientId"}
 LOCATION_KEYS = {"city", "latitude", "longitude", "location", "timeZoneId"}
 HEATING_FIELDS = (
-    "actualTemperature", "setPointTemperature", "valvePosition", "valveActualTemperature",
-    "humidity", "lowBat", "unreach", "rssiDeviceValue", "deviceUndervoltage",
+    "actualTemperature",
+    "setPointTemperature",
+    "valvePosition",
+    "valveActualTemperature",
+    "humidity",
+    "lowBat",
+    "unreach",
+    "rssiDeviceValue",
+    "deviceUndervoltage",
 )
 
 
@@ -53,7 +63,11 @@ class Scrubber:
                 if k in DROP_KEYS:
                     continue
                 key = self.text(k)
-                out[key] = "REDACTED" if k in LOCATION_KEYS and isinstance(v, (str, int, float)) else self.walk(v)
+                out[key] = (
+                    "REDACTED"
+                    if k in LOCATION_KEYS and isinstance(v, (str, int, float))
+                    else self.walk(v)
+                )
             return out
         if isinstance(node, list):
             return [self.walk(v) for v in node]
@@ -61,13 +75,21 @@ class Scrubber:
 
 
 def summarize(raw: dict) -> str:
-    lines = ["# Fixture summary (generated)", "", "## Devices", "",
-             "| modelType | label | heating/battery fields present |", "|---|---|---|"]
+    lines = [
+        "# Fixture summary (generated)",
+        "",
+        "## Devices",
+        "",
+        "| modelType | label | heating/battery fields present |",
+        "|---|---|---|",
+    ]
     for dev in raw.get("devices", {}).values():
         present = set()
         for ch in dev.get("functionalChannels", {}).values():
             present |= {f for f in HEATING_FIELDS if f in ch}
-        lines.append(f"| {dev.get('modelType', dev.get('type'))} | {dev.get('label')} | {', '.join(sorted(present)) or '-'} |")
+        lines.append(
+            f"| {dev.get('modelType', dev.get('type'))} | {dev.get('label')} | {', '.join(sorted(present)) or '-'} |"
+        )
     groups = Counter(g.get("type") for g in raw.get("groups", {}).values())
     lines += ["", "## Group types", ""] + [f"- {t}: {n}" for t, n in sorted(groups.items())]
     for g in raw.get("groups", {}).values():
@@ -75,7 +97,10 @@ def summarize(raw: dict) -> str:
             lines.append(f"- {g['type']} `on` = {g.get('on')} (label: {g.get('label')})")
     names = Counter(d.get("label") for d in raw.get("devices", {}).values())
     dup = [n for n, c in names.items() if c > 1]
-    lines += ["", f"## Device-name uniqueness (intent Q7): {'DUPLICATES: ' + ', '.join(map(str, dup)) if dup else 'all unique'}"]
+    lines += [
+        "",
+        f"## Device-name uniqueness (intent Q7): {'DUPLICATES: ' + ', '.join(map(str, dup)) if dup else 'all unique'}",
+    ]
     return "\n".join(lines) + "\n"
 
 

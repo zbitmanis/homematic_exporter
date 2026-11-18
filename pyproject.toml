@@ -1,0 +1,38 @@
+# Project metadata and tool configuration. The app is run from the container image and is not built or
+# published as a package; dependencies are pinned in requirements*.txt (see docs/sbom/components.md).
+[project]
+name = "homematic-exporter"
+version = "0.0.0"  # real versions come from git tags (semantic-release); not used at runtime
+description = "Prometheus exporter for Homematic IP heating"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = [".claude"]   # copied/adapted harness files, not project code
+
+[tool.ruff.format]
+exclude = ["*.md"]   # do not reformat code blocks inside documentation
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]  # S = bandit rules
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]            # assert is fine in tests
+"scripts/**" = ["S101", "E501", "ASYNC240"]   # throwaway spike/helper scripts
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+strict = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+addopts = "-m 'not e2e'"   # run e2e explicitly: pytest -m e2e tests/e2e
+markers = ["e2e: end-to-end tests against a fake upstream (slow)"]
