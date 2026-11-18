@@ -82,6 +82,12 @@ _Catch-up review of task 1 (merged `824c8b6`), 2026-11-19, run read-only by `pyt
 | 20 | architect | LOW | Naming: `ExtraField.scope` singular (`room`) vs metric `scope` plural (`rooms`); label-to-attribute mapping per scope unspecified | fixed: scope/label mapping table in spec 6.1 |
 | 21 | architect | LOW | Files agents must not touch in phase 2 (`pyproject.toml`, `CLAUDE.md`, `Dockerfile`); spec 11 wrongly assigns a Dockerfile change to the metrics task | fixed: spec 12.1 rules, repeated in each module plan; Dockerfile change moved to task 4 |
 | 22 | architect | process | Module ownership not enforced: no path guard hook, no CI check of changed paths per branch, no CODEOWNERS, no import-boundary check, nothing ties a contract change to a spec change | partly fixed: import-boundary test added; path-guard hook, CODEOWNERS and a CI check tying contract changes to spec changes remain (task 1c) |
+| 23 | security (re-review of task 1b) | HIGH | `redact.scrub` leaked Python-repr credentials (`{'authToken': 'abc'}`) and bodies with single-quoted keys/values. Reproduced. | fixed: quote-aware pattern, test added |
+| 24 | security (re-review) | HIGH | `Authorization: Basic <cred>` consumed only the scheme word; bare `Bearer <token>` not scrubbed. Reproduced. | fixed: any scheme word handled, standalone bearer rule (6+ characters), tests |
+| 25 | security (re-review) | MEDIUM | Key coverage narrow (`auth_token`, `api_key`, `password`, `secret` unchanged) | fixed: broader key list incl. `access-token`, `passwd`, prefixed keys such as `my_token`; tests |
+| 26 | security (re-review) | MEDIUM | Quoted values with spaces or escaped quotes were cut mid-value (`token: "abc def"` kept `def`) | fixed: full quoted-string match with escapes; tests |
+| 27 | security (re-review) | LOW | SGTIN `\b` anchors missed underscore-adjacent IDs (`dev_<sgtin>`), also in `scripts/fixture/dump_state.py` | fixed in both places |
+| 28 | security (re-review) | LOW | Not caught by design: a secret split across lines, fullwidth Unicode keys, bare bearer tokens under 6 characters; the `secrets=` argument covers known secrets exactly | accepted as residual risk (owner to confirm); no ReDoS (100 KB inputs under 20 ms) |
 
 Clean results worth keeping: capture file not tracked and not in the image; no secrets, SGTINs or tokens in git history; workflows use `pull_request` (no secrets for forks) and no untrusted text in `run:`; contracts and config models match spec sections 3 and 5.1 field for field; the fixture mirrors the real structure.
 
