@@ -9,7 +9,7 @@ Master plan: task list with the **closing review task** every plan ends with and
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
 | 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
 | 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater`, security re-check of `redact.py` | `fix/1b-closing-review` | - | R2, R3, R4 (re-check), R6, R9 | planned, **before phase 2** |
-| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper | `feat/ownership-guard` | built (gate green: 107 tests incl. 38 for the guard) | R1 done; R2-R5, R8, R9, R10 in progress | before phase 2 |
+| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | built (gate green: 149 tests, 80 for the guard) | closing review done once, 2 HIGH + 7 MEDIUM fixed (rows 38-52), re-check pending | before phase 2 |
 | 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
 | 2c | `source` | `feat/source` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/source.md`) |
@@ -74,7 +74,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 contracts | pass (3.13) | approve (catch-up) | approve (catch-up) | approve (catch-up) | not ready, fixed in 1b | skipped | n/a | n/a | n/a | merged |
 | 1b readiness | pass (3.13) | **not run** | **not run** | done: 2 HIGH found and fixed; fixes **not re-checked** by the reviewer | done: ready with conditions, conditions closed | **not run** | n/a | n/a | by coordinator, **`doc-updater` not run** | merged (#5) |
-| 1c guardrails | pass (3.13) | - | - | - | - | n/a | n/a | - | - | - |
+| 1c guardrails | pass (3.13) | BLOCK, fixed | WARNING, fixed | 5 bypasses, fixed | ready with conditions, fixed | n/a | n/a | done by hand (hook + 6 CI scenarios) | checked, fixed | pending |
 | 2a state | - | - | - | - | C | - | C | n/a | - | - |
 | 2b metrics | - | - | - | - | C | - | C | n/a | - | - |
 | 2c source | - | - | - | - | C | - | C | n/a | - | - |
@@ -111,7 +111,7 @@ _Catch-up review of task 1 (merged `824c8b6`), 2026-11-19, run read-only by `pyt
 | 19 | architect | MEDIUM | Shared test/config files: tests have no package markers (duplicate test names across `tests/<module>/` break collection, same root cause as log row 1); `source` and `metrics` both need `extract` defaults and could drift | fixed: package markers, `config/default-config.yaml` (`extract`, `tuning`), `default_extract`/`default_tuning` fixtures |
 | 20 | architect | LOW | Naming: `ExtraField.scope` singular (`room`) vs metric `scope` plural (`rooms`); label-to-attribute mapping per scope unspecified | fixed: scope/label mapping table in spec 6.1 |
 | 21 | architect | LOW | Files agents must not touch in phase 2 (`pyproject.toml`, `CLAUDE.md`, `Dockerfile`); spec 11 wrongly assigns a Dockerfile change to the metrics task | fixed: spec 12.1 rules, repeated in each module plan; Dockerfile change moved to task 4 |
-| 22 | architect | process | Module ownership not enforced: no path guard hook, no CI check of changed paths per branch, no CODEOWNERS, no import-boundary check, nothing ties a contract change to a spec change | partly fixed: import-boundary test added; path-guard hook, CODEOWNERS and a CI check tying contract changes to spec changes remain (task 1c) |
+| 22 | architect | process | (superseded by task 1c, rows 38-52) Module ownership not enforced: no path guard hook, no CI check of changed paths per branch, no CODEOWNERS, no import-boundary check, nothing ties a contract change to a spec change | partly fixed: import-boundary test added; path-guard hook, CODEOWNERS and a CI check tying contract changes to spec changes remain (task 1c) |
 | 23 | security (re-review of task 1b) | HIGH | `redact.scrub` leaked Python-repr credentials (`{'authToken': 'abc'}`) and bodies with single-quoted keys/values. Reproduced. | fixed: quote-aware pattern, test added |
 | 24 | security (re-review) | HIGH | `Authorization: Basic <cred>` consumed only the scheme word; bare `Bearer <token>` not scrubbed. Reproduced. | fixed: any scheme word handled, standalone bearer rule (6+ characters), tests |
 | 25 | security (re-review) | MEDIUM | Key coverage narrow (`auth_token`, `api_key`, `password`, `secret` unchanged) | fixed: broader key list incl. `access-token`, `passwd`, prefixed keys such as `my_token`; tests |
@@ -127,6 +127,21 @@ _Catch-up review of task 1 (merged `824c8b6`), 2026-11-19, run read-only by `pyt
 | 35 | architect (re-review) | LOW | No version source for `homematic_exporter_build_info` | fixed: env `APP_VERSION` (default `dev`), set by the image build (task 4) |
 | 36 | architect (re-review) | LOW | Import-boundary test scanned `src/` only | fixed: also scans `tests/<module>/` |
 | 37 | architect (re-review) | LOW | Doc drift (plans/app.md, task numbering, `mypy src`, task 4 scope, `source/CLAUDE.md` httpx, root CLAUDE.md plan.md) | fixed |
+| 38 | python (task 1c) | HIGH | CI diff hides the source side of renames (`git mv` out of a protected path shows only the allowed destination) | fixed: `--no-renames -z`; tests incl. a contract rename |
+| 39 | python (task 1c) | HIGH | Restricted YAML parser silently mis-parsed valid YAML (inline comments, quoted commas, same-indent lists, booleans, tabs) | fixed: strict parser raising `ValueError`, `validate_config`, 10 negative tests |
+| 40 | python, code, security, architect | MEDIUM | Branch names that merely look like a module (`feat/state2`, `chore/state`, `Feat/state`) fell back to unrestricted | fixed: every branch must be `feat/` or `fix/`; lookalikes fail; owner's existing branches still pass |
+| 41 | python, security | MEDIUM | CI script crashed or skipped on missing files or a bad base ref (a bad ref counted as "no rules") | fixed: base must resolve; skip only for the explicit bootstrap; missing file on either side handled |
+| 42 | python, security | MEDIUM | Hook resolved relative paths against its own cwd and took the root from the payload cwd (`cwd=/` or another repo fail-opened) | fixed: root from the hook's own location, relative paths against payload cwd |
+| 43 | security, architect | HIGH | CI ran the PR's own checker code; a PR could replace it | fixed in `ci.yml`: the base branch's copies of the checker and library are run; the job also fails if the base cannot be resolved. Residual: a PR can edit `ci.yml` itself; a required status check named `ownership` stops the merge if the job disappears (owner action) |
+| 44 | architect | MEDIUM | "Contract change may not touch module code" would deadlock the first breaking contract change | fixed: spec rule stays, module code in the same PR is allowed but warned about |
+| 45 | architect, security | MEDIUM | Hook allowed edits outside the worktree (sibling checkouts, case-variant roots, symlink escapes) | fixed: blocked for module agents except temp dirs; symlink targets checked; case-insensitive comparison by file identity; fails closed for module agents |
+| 46 | code, architect, python | LOW | `default-config.yaml` rule was a deny-list (new top-level keys unchecked) | fixed: allow-list `editable_sections: [metrics]` |
+| 47 | architect | LOW | Worktree helper could only create `feat/<module>` | fixed: optional validated branch argument |
+| 48 | python | LOW | Trailing-slash and malformed globs matched nothing silently; test gaps | fixed: `validate_config`, glob tests for `**`, special characters |
+| 49 | code, docs check | MEDIUM | Docs still described the unguarded setup (`claude --worktree`), "Was:" leftovers, CODEOWNERS silently dropped, evals in present tense, `check_config` shown as existing | fixed in `CLAUDE.md`, `harness.md`, `plan.md`, agents, `.claude/README.md`, module `CLAUDE.md` files, `components.md`, spec 12.1 |
+| 50 | architect | note | `parse_simple_yaml` exists only so the hook runs without PyYAML; JSON would remove it | owner decision kept YAML; parser is now strict and tested |
+| 51 | security | accepted limit | Bash edits (`sed -i`, `rm .hmx-module`) are invisible to the hook | documented; CI is the backstop |
+| 52 | security | note | PRs from forks choose their own head branch name | solo repo; owner review; branch must match the scheme |
 
 Clean results worth keeping: capture file not tracked and not in the image; no secrets, SGTINs or tokens in git history; workflows use `pull_request` (no secrets for forks) and no untrusted text in `run:`; contracts and config models match spec sections 3 and 5.1 field for field; the fixture mirrors the real structure.
 

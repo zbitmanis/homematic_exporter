@@ -5,6 +5,11 @@
 # their own lines) so the hook runs with a bare Python and no PyYAML.
 version: 1
 
+# Every PR branch must start with one of these (owner's scheme: feat|fix/name). Anything else fails.
+branch_prefixes:
+  - "feat/"
+  - "fix/"
+
 # A branch named feat/<module> or fix/<module>[-or-/anything] may change ONLY these paths.
 modules:
   state:
@@ -39,6 +44,7 @@ module_code:
   - "src/homematic_exporter/source/**"
   - "src/homematic_exporter/app/**"
 
-# Sections of a YAML file that a module branch must leave unchanged (metrics may edit only `metrics:`).
-protected_sections:
-  config/default-config.yaml: [extract, tuning, version]
+# For these YAML files a module branch may change ONLY the listed top-level sections; anything else
+# (including new top-level keys) fails the check. metrics may edit only the `metrics:` list.
+editable_sections:
+  config/default-config.yaml: [metrics]

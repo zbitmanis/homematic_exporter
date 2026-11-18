@@ -40,7 +40,15 @@ jobs:
         env:   # branch names go through env, never into the script text
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
-        run: python scripts/check_ownership.py --base "origin/${BASE_REF}" --branch "${HEAD_REF}"
+        run: |
+          # run the BASE branch's copy of the checker, not the PR's own (a PR could rewrite it)
+          mkdir -p "$RUNNER_TEMP/own"
+          if git show "origin/${BASE_REF}:scripts/check_ownership.py" > "$RUNNER_TEMP/own/check_ownership.py" \
+             && git show "origin/${BASE_REF}:scripts/ownership_lib.py" > "$RUNNER_TEMP/own/ownership_lib.py"; then
+            python "$RUNNER_TEMP/own/check_ownership.py" --repo . --base "origin/${BASE_REF}" --branch "${HEAD_REF}"
+          else
+            echo "notice: base branch has no ownership checker yet; check skipped"
+          fi
 
   build:
     needs: gate

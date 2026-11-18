@@ -45,7 +45,7 @@ You are a harness-optimization specialist for this repository.
 
 ## Leverage areas for this project
 - Edit hook (`.claude/hooks/py-post-edit.sh`): speed, correctness, skip behavior when `ruff` is absent
-- Module-ownership enforcement (planned PreToolUse hook) and protected paths (generated SBOM, lock files)
+- Module-ownership enforcement (built in task 1c: `.claude/ownership.yaml`, the `ownership` CI check, the path-guard hook) and the protected paths still open (generated SBOM, lock files for coordinator edits)
 - CLAUDE.md "Things Claude gets wrong" entries and their evals; each incident adds an eval
 - Agent roster and model policy (Sonnet maximum; Haiku for documentation/coordination agents)
 - Spike-header check and lock-drift CI proposals from `docs/sbom/components.md`

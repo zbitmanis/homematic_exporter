@@ -9,3 +9,4 @@ Owns: Homematic IP client. Nothing outside `source/` and `tests/source/`. Plan: 
 - On upstream failure raise a typed error carrying the response body; `app` logs it.
 - Tests use recorded fixtures in `tests/source/fixtures/`; no network, no real credentials.
 - Confirm field names against fixtures before mapping them (intent open question 2).
+- Allowed paths for this module are enforced by `.claude/ownership.yaml` (CI check and path-guard hook); anything else goes under "Requests" in your plan.
