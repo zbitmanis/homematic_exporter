@@ -346,15 +346,102 @@ def test_restart_after_failed_save_does_not_hide_change() -> None:
     assert store.saves == 1
 
 
-@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), -1e12, 1e18])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        -1e12,
+        1e18,
+        -62135596800.0,
+        -62135596800.0 + 86400,
+        253402300800.0,
+    ],
+)
 def test_invalid_now_raises_without_mutation(
     hist: BatteryHistory, store: MemStore, bad: float
 ) -> None:
+    hist.update([dev("old", low=False)], T0)
+    before = json.dumps(store.data, sort_keys=True)
+    saves = store.saves
     with pytest.raises(ValueError, match="invalid timestamp"):
-        hist.update([dev(low=True)], bad)
-    assert store.saves == 0
-    assert one(hist.update([dev(low=True)], T0)).low_since == T0
+        hist.update([dev("old", low=True), dev("new", low=True)], bad)
+    assert store.saves == saves
+    assert json.dumps(store.data, sort_keys=True) == before
+    # in-memory state untouched too: the next valid update sees "old" as not low
+    recs = hist.update([dev("old", low=False), dev("new", low=False)], T0 + 10)
+    assert [r.low_since for r in recs] == [None, None] and store.saves == saves + 1
 
 
 def test_time_is_injected_not_read(hist: BatteryHistory) -> None:
     assert one(hist.update([dev(low=True)], 12345.0)).low_since == 12345.0
+
+
+def test_failure_log_is_rate_limited_and_recovery_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    store = FlakyStore(failures=100)
+    h = BatteryHistory(store, Tuning())
+    with caplog.at_level(logging.INFO, logger="homematic_exporter.state.battery"):
+        h.update([dev()], T0)  # first failure logged
+        for i in range(1, 15):
+            h.update([dev()], T0 + i * 60)  # up to 840 s: silent
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        h.update([dev()], T0 + 900)  # 900 s after the first log
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 2
+        h.update([dev()], T0 + 1000)
+        assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+        store.failures = 0
+        h.update([dev()], T0 + 1100)
+    infos = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert [r.getMessage() for r in infos] == ["state saved after earlier failures"]
+    assert "secret" not in caplog.text
+
+
+def test_no_recovery_info_without_earlier_failure(caplog: pytest.LogCaptureFixture) -> None:
+    h = BatteryHistory(MemStore(), Tuning())
+    with caplog.at_level(logging.INFO):
+        h.update([dev()], T0)
+    assert not caplog.records
+
+
+def test_second_failure_episode_logs_again(caplog: pytest.LogCaptureFixture) -> None:
+    store = FlakyStore(failures=1)
+    h = BatteryHistory(store, Tuning())
+    with caplog.at_level(logging.WARNING):
+        h.update([dev()], T0)
+        h.update([dev()], T0 + 10)  # success
+        store.failures = 1
+        h.update([dev(low=True)], T0 + 20)  # new failure, soon after: still logged
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+
+LOW_BOUND = 0.0
+HIGH_BOUND = 4102444800.0
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "kept"),
+    [
+        ("low_since", LOW_BOUND, True),
+        ("low_since", HIGH_BOUND, True),
+        ("low_since", -1, False),
+        ("low_since", HIGH_BOUND + 1, False),
+        ("last_replaced", LOW_BOUND, True),
+        ("last_replaced", HIGH_BOUND, True),
+        ("last_replaced", -0.5, False),
+        ("last_replaced", HIGH_BOUND + 1, False),
+        ("last_seen_day", "2000-01-01", True),
+        ("last_seen_day", "2100-12-31", True),
+        ("last_seen_day", "1999-12-31", False),
+        ("last_seen_day", "2101-01-01", False),
+    ],
+)
+def test_stored_value_bounds(store: MemStore, field: str, value: object, kept: bool) -> None:
+    store.data["battery"] = {"version": 1, "records": {"a": rec_data(**{field: value})}}
+    h = BatteryHistory(store, Tuning(state_retention_days=100000))
+    h.update([], T0)
+    assert (names(store) == ["a"]) is kept

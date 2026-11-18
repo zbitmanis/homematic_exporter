@@ -6,6 +6,7 @@ import os
 import re
 import stat
 import tempfile
+import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,9 @@ _DIR_MODE = 0o700
 _FILE_MODE = 0o600
 _KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MAX_STATE_BYTES = 1_000_000
+STALE_TEMP_SECONDS = 300
+# Exactly what `save` creates: ".<key>.<8 random chars from mkstemp>.tmp".
+_TEMP_RE = re.compile(r"^\.[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.[a-z0-9_]{8}\.tmp$")
 
 
 class StateDirError(Exception):
@@ -29,6 +33,8 @@ class FileStateStore:
 
     def __init__(self, directory: str | Path) -> None:
         self._dir = Path(directory)
+        if self._dir.exists() and not self._dir.is_dir():
+            raise StateDirError("state path is not a directory")
         try:
             self._dir.mkdir(mode=_DIR_MODE, exist_ok=True)
             st = self._dir.stat()
@@ -45,10 +51,14 @@ class FileStateStore:
         self._remove_stale_temp_files()
 
     def _remove_stale_temp_files(self) -> None:
-        """Best effort: drop `.<key>.*.tmp` files left by a hard crash mid-write."""
+        """Best effort: drop this store's own temp files left by a crash, if older than 5 min."""
         try:
-            for path in self._dir.glob(".*.tmp"):
-                if path.is_file() and not path.is_symlink():
+            cutoff = time.time() - STALE_TEMP_SECONDS
+            for path in self._dir.iterdir():
+                if not _TEMP_RE.fullmatch(path.name):
+                    continue
+                st = path.lstat()
+                if stat.S_ISREG(st.st_mode) and st.st_mtime < cutoff:
                     path.unlink(missing_ok=True)
         except OSError:
             logger.warning("could not clean stale state temp files")
@@ -61,10 +71,19 @@ class FileStateStore:
     def load(self, key: str) -> dict[str, object] | None:
         path = self._path(key)
         try:
-            with path.open("rb") as handle:
-                raw = handle.read(MAX_STATE_BYTES + 1)
+            # O_NONBLOCK: opening a FIFO must not block; O_NOFOLLOW: no symlinked state files.
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
         except FileNotFoundError:
             return None
+        except OSError as exc:
+            logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
+            return None
+        try:
+            with os.fdopen(fd, "rb") as handle:
+                if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                    logger.warning("state key %r is not a regular file; starting empty", key)
+                    return None
+                raw = handle.read(MAX_STATE_BYTES + 1)
         except OSError as exc:
             logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
             return None
@@ -84,12 +103,13 @@ class FileStateStore:
     def _fsync_dir(self) -> None:
         try:
             fd = os.open(self._dir, os.O_RDONLY)
-        except OSError:
+        except OSError as exc:
+            logger.debug("state directory fsync failed (%s)", type(exc).__name__)
             return
         try:
             os.fsync(fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("state directory fsync failed (%s)", type(exc).__name__)
         finally:
             os.close(fd)
 

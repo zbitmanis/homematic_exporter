@@ -10,6 +10,10 @@ Owns: persistence on the mounted volume (battery history). The auth token is NOT
 - Stored under key `battery`: `{"version": 1, "records": {name: {room, device_type, low_since, last_replaced, last_seen_day}}}`.
 
 ## Rules
+- The state directory must be used by ONE process (single replica); there is no locking.
+- A failing save is logged at most once per 15 minutes (by injected time), plus one INFO line on recovery.
+- Special files (FIFO, directory) and symlinks as state files are rejected (warning, `None`). Only this store's own temp files older than 5 minutes are cleaned at start.
+- Stored timestamps outside 1970..2100 and days outside 2000..2100 mark a record malformed.
 - One shared `BatteryHistory` instance, called from the single poll task (no locking). `update` is synchronous with blocking fsync: the app runs it off the event loop.
 - Never echo values or paths in logs or exceptions.
 - Time is injected (`now`), never read inside the module.

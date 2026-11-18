@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 KEY = "battery"
 _VERSION = 1
+# Plausible ranges for stored values (1970..2100, 2000..2100); anything else is malformed.
+MIN_TIMESTAMP = 0.0
+MAX_TIMESTAMP = 4102444800.0
+MIN_DAY = date(2000, 1, 1)
+MAX_DAY = date(2100, 12, 31)
+LOG_INTERVAL_SECONDS = 900.0
 
 # Internal record: BatteryRecord fields plus `last_seen_day` (ISO date, UTC).
 _Stored = dict[str, object]
@@ -26,7 +32,16 @@ def _opt_num(value: object) -> float | None:
     number = float(value)  # OverflowError (huge int) is handled by the caller
     if not math.isfinite(number):
         raise ValueError("not finite")
+    if not MIN_TIMESTAMP <= number <= MAX_TIMESTAMP:
+        raise ValueError("out of range")
     return number
+
+
+def _day(value: object) -> date:
+    day = date.fromisoformat(str(value))
+    if not MIN_DAY <= day <= MAX_DAY:
+        raise ValueError("day out of range")
+    return day
 
 
 def _text(value: object) -> str:
@@ -37,6 +52,8 @@ class BatteryHistory:
     def __init__(self, store: StateStore, tuning: Tuning) -> None:
         self._store = store
         self._retention = timedelta(days=tuning.state_retention_days)
+        self._failing = False
+        self._last_failure_log: float | None = None
         self._unsaved = False  # a change that has not reached the store yet
         self._records: dict[str, _Stored] = self._load()
 
@@ -59,7 +76,7 @@ class BatteryHistory:
                     "device_type": _text(rec.get("device_type")),
                     "low_since": _opt_num(rec.get("low_since")),
                     "last_replaced": _opt_num(rec.get("last_replaced")),
-                    "last_seen_day": date.fromisoformat(str(rec.get("last_seen_day"))).isoformat(),
+                    "last_seen_day": _day(rec.get("last_seen_day")).isoformat(),
                 }
             except (ValueError, TypeError, OverflowError):
                 logger.warning("dropping malformed battery history record")
@@ -71,6 +88,7 @@ class BatteryHistory:
             if not math.isfinite(now):
                 raise ValueError
             today = datetime.fromtimestamp(now, UTC).date()
+            cutoff = today - self._retention  # all date maths up front: no partial mutation
         except (ValueError, OverflowError, OSError):
             raise ValueError("invalid timestamp") from None
         today_s = today.isoformat()
@@ -116,7 +134,6 @@ class BatteryHistory:
                 )
             )
 
-        cutoff = today - self._retention
         for name in [n for n, r in self._records.items() if _is_older(r, cutoff)]:
             del self._records[name]
             dirty = True
@@ -127,9 +144,19 @@ class BatteryHistory:
                 self._store.save(KEY, {"version": _VERSION, "records": self._records})
             except OSError as exc:
                 # Keep serving; the next update retries because `_unsaved` stays set.
-                logger.warning("battery history save failed (%s); will retry", type(exc).__name__)
+                last = self._last_failure_log
+                if last is None or not 0 <= now - last < LOG_INTERVAL_SECONDS:
+                    logger.warning(
+                        "battery history save failed (%s); will retry", type(exc).__name__
+                    )
+                    self._last_failure_log = now
+                self._failing = True
             else:
                 self._unsaved = False
+                if self._failing:
+                    logger.info("state saved after earlier failures")
+                self._failing = False
+                self._last_failure_log = None
         return result
 
 

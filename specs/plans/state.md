@@ -49,3 +49,4 @@ These are requests to the coordinator (separate docs PR).
 - (b) app plan: construct `FileStateStore(STATE_DIR)` in `wiring.py` and map `StateDirError` to a non-zero exit with a path-free log line; pass `config.tuning`; call `update(devices, snapshot.taken_at)` from the single poll task; run the synchronous fsync write off the event loop (`asyncio.to_thread`); document that `update` never raises `OSError`.
 - (c) deployment note: the state volume must be mode 0700 and owned by the container user (rootless podman: the `:U` volume option or equivalent); a private parent directory is recommended (the store does not create parents).
 - (d) `docs/sbom/components.md` row for `state`: depends on "contracts, config_models" and lists `StateDirError`.
+- (e) spec/deployment note: the state directory must be used by ONE process (single replica, no locking); a failing save is logged at most once per 15 minutes; special files and symlinks as state files are rejected.

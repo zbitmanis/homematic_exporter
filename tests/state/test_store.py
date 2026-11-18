@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import stat
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -45,13 +47,104 @@ def test_refuses_directory_owned_by_someone_else(
     assert str(d) not in str(exc.value)
 
 
-def test_leftover_temp_files_removed_at_startup(tmp_path: Path) -> None:
+OLD = time.time() - 3600
+STALE = ".battery.ab12_x9z.tmp"
+
+
+def make_tmp(path: Path, mtime: float) -> None:
+    path.write_text("partial")
+    os.utime(path, (mtime, mtime))
+
+
+def test_old_own_temp_file_removed_at_startup(tmp_path: Path) -> None:
     d = tmp_path / "s"
     FileStateStore(d)
-    (d / ".battery.abc123.tmp").write_text("partial")
+    make_tmp(d / STALE, OLD)
     (d / "battery.json").write_text("{}")
     FileStateStore(d)
     assert [p.name for p in d.iterdir()] == ["battery.json"]
+
+
+def test_young_own_temp_file_kept(tmp_path: Path) -> None:
+    d = tmp_path / "s"
+    FileStateStore(d)
+    make_tmp(d / STALE, time.time() - 10)
+    FileStateStore(d)
+    assert (d / STALE).exists()
+
+
+@pytest.mark.parametrize("name", [".notes.tmp", ".battery.tmp", "battery.ab12_x9z.tmp"])
+def test_unrelated_old_tmp_files_kept(tmp_path: Path, name: str) -> None:
+    d = tmp_path / "s"
+    FileStateStore(d)
+    make_tmp(d / name, OLD)
+    FileStateStore(d)
+    assert (d / name).exists()
+
+
+def test_symlink_and_directory_with_temp_name_kept(tmp_path: Path) -> None:
+    d = tmp_path / "s"
+    FileStateStore(d)
+    target = tmp_path / "target"
+    target.write_text("x")
+    (d / STALE).symlink_to(target)
+    (d / ".k.zz99zz99.tmp").mkdir()
+    FileStateStore(d)
+    assert (d / STALE).is_symlink() and target.exists()
+    assert (d / ".k.zz99zz99.tmp").is_dir()
+
+
+def test_real_temp_name_matches_cleanup_pattern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    d = tmp_path / "s"
+    store = FileStateStore(d)
+    seen: list[str] = []
+    real = os.replace
+
+    def spy(src: str, dst: str) -> None:
+        seen.append(Path(src).name)
+        real(src, dst)
+
+    monkeypatch.setattr(os, "replace", spy)
+    store.save("battery", {})
+    monkeypatch.undo()
+    make_tmp(d / seen[0], OLD)
+    FileStateStore(d)
+    assert not (d / seen[0]).exists()
+
+
+def _load_with_timeout(store: FileStateStore, key: str) -> list[object]:
+    out: list[object] = []
+    t = threading.Thread(target=lambda: out.append(store.load(key)), daemon=True)
+    t.start()
+    t.join(5)
+    assert not t.is_alive(), "load hung"
+    return out
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no mkfifo")
+def test_fifo_state_file_does_not_hang(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    store = FileStateStore(tmp_path / "s")
+    os.mkfifo(tmp_path / "s" / "k.json")
+    with caplog.at_level(logging.WARNING):
+        assert _load_with_timeout(store, "k") == [None]
+    assert "not a regular file" in caplog.text
+    assert str(tmp_path) not in caplog.text
+
+
+def test_symlinked_state_file_rejected(tmp_path: Path) -> None:
+    store = FileStateStore(tmp_path / "s")
+    real = tmp_path / "real.json"
+    real.write_text('{"a": 1}')
+    (tmp_path / "s" / "k.json").symlink_to(real)
+    assert store.load("k") is None
+
+
+def test_regular_state_file_still_loads(tmp_path: Path) -> None:
+    store = FileStateStore(tmp_path / "s")
+    (tmp_path / "s" / "k.json").write_text('{"a": 1}')
+    assert store.load("k") == {"a": 1}
 
 
 def test_save_fsyncs_file_and_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,8 +161,8 @@ def test_save_fsyncs_file_and_directory(tmp_path: Path, monkeypatch: pytest.Monk
     assert len(calls) == 2
 
 
-def test_directory_fsync_failure_is_ignored(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_directory_fsync_failure_is_ignored_and_logged_at_debug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     store = FileStateStore(tmp_path / "s")
     real_open = os.open
@@ -80,8 +173,12 @@ def test_directory_fsync_failure_is_ignored(
         return real_open(path, flags, *a, **k)
 
     monkeypatch.setattr(os, "open", fail_dir_open)
-    store.save("k", {"v": 1})
+    with caplog.at_level(logging.DEBUG, logger="homematic_exporter.state.store"):
+        store.save("k", {"v": 1})
     monkeypatch.undo()
+    debug = [r for r in caplog.records if r.levelno == logging.DEBUG]
+    assert len(debug) == 1 and "OSError" in debug[0].getMessage()
+    assert str(tmp_path) not in caplog.text
     assert store.load("k") == {"v": 1}
 
 
@@ -147,8 +244,9 @@ def test_refuses_looser_directory(tmp_path: Path, bad: int) -> None:
 def test_refuses_non_directory(tmp_path: Path) -> None:
     f = tmp_path / "file"
     f.write_text("x")
-    with pytest.raises(StateDirError):
+    with pytest.raises(StateDirError, match="not a directory") as exc:
         FileStateStore(f)
+    assert str(tmp_path) not in str(exc.value)
 
 
 def test_conforms_to_protocol(tmp_path: Path) -> None:
