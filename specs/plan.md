@@ -8,7 +8,7 @@ Master plan: task list with the **closing review task** every plan ends with and
 |---|---|---|---|---|---|
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
 | 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
-| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater` (docs check), security re-check of `redact.py` | `fix/1b-closing-review` | done (gate green: 225 tests) | R2, R3, R4, R9 done, findings fixed (rows 59-71); R6 simplifier and re-check pending | planned, **before phase 2** |
+| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater` (docs check), security re-check of `redact.py` | `fix/1b-closing-review` | done (gate green: 225 tests) | R2, R3, R4, R6, R9 done, findings fixed (rows 59-71); final security re-check of `redact.py` running | planned, **before phase 2** |
 | 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | done | closing review plus re-check done; all findings fixed or accepted (rows 38-58) | merged (`c49544a`) |
 | 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
@@ -73,7 +73,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 | Task | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 contracts | pass (3.13) | approve (catch-up) | approve (catch-up) | approve (catch-up) | not ready, fixed in 1b | skipped | n/a | n/a | n/a | merged |
-| 1b readiness | pass (3.13) | warning, fixed (1b-close) | approve, doc fixes (1b-close) | 2 HIGH fixed and confirmed; 1 new HIGH found and fixed (1b-close) | done: ready with conditions, conditions closed | pending (1b-close) | n/a | n/a | docs check done, fixed (1b-close) | merged (#5) |
+| 1b readiness | pass (3.13) | warning, fixed (1b-close) | approve, doc fixes (1b-close) | 2 HIGH fixed and confirmed; 1 new HIGH found and fixed (1b-close) | done: ready with conditions, conditions closed | done: 1 test move (1b-close) | n/a | n/a | docs check done, fixed (1b-close) | merged (#5) |
 | 1c guardrails | pass (3.13) | BLOCK then re-check: all fixed | WARNING, fixed | 5 bypasses then re-check: all fixed, 1 accepted design gap | ready with conditions, fixed | n/a | n/a | done by hand (hook + 6 CI scenarios) | checked, fixed | pending |
 | 2a state | - | - | - | - | C | - | C | n/a | - | - |
 | 2b metrics | - | - | - | - | C | - | C | n/a | - | - |

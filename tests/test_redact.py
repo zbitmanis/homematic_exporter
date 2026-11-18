@@ -42,6 +42,15 @@ def test_harmless_text_is_unchanged() -> None:
     assert scrub(text) == text
 
 
+LEAK_SHAPES = [
+    "{'authToken': 'abc123'}",
+    "Authorization: Basic dXNlcjpwYXNz",
+    "token=abc123 pin=1234",
+    "{'clientAuthToken': 'abc123'}",
+    "Cookie: session=abc123; other=1",
+]
+
+
 def test_idempotent_on_every_leak_shape_and_safe_on_odd_input() -> None:
     for text in LEAK_SHAPES:
         once = scrub(text)
@@ -95,15 +104,6 @@ def test_large_inputs_are_fast() -> None:
         start = time.perf_counter()
         scrub(big)
         assert time.perf_counter() - start < 1.0
-
-
-LEAK_SHAPES = [
-    "{'authToken': 'abc123'}",
-    "Authorization: Basic dXNlcjpwYXNz",
-    "token=abc123 pin=1234",
-    "{'clientAuthToken': 'abc123'}",
-    "Cookie: session=abc123; other=1",
-]
 
 
 @pytest.mark.parametrize(
