@@ -51,7 +51,7 @@ homematic_exporter/
 ├── pyproject.toml                 ruff, mypy, pytest config
 ├── requirements.txt / requirements-dev.txt   pinned
 ├── Makefile                       test, lint, types, audit, sbom, e2e
-├── metrics.yaml                   metric definitions (default config)
+├── config/default-config.yaml     default mapping + metric definitions (bundled; mounted override at /etc/homematic-exporter/config/)
 ├── src/homematic_exporter/
 │   ├── contracts.py               Snapshot, Source, StateStore protocols
 │   ├── source/        (+CLAUDE.md)

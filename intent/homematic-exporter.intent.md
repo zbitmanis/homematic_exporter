@@ -14,7 +14,7 @@ A small container service that polls Homematic IP, caches the results, and expos
 
 1. Prometheus scrapes `/metrics` and per-room temperature, setpoint, valve position, humidity and battery state appear within one poll interval of startup.
 2. An alert on `time() - homematic_last_successful_poll_timestamp_seconds > 300` fires when the exporter runs but data is stale.
-3. A new metric can be added by editing `metrics.yaml` only.
+3. A new metric can be added by editing the mounted `config.yaml` only (mapping is configuration, structure is code; see `specs/spec.md` 5.1).
 4. The service survives restarts without re-pairing (the token is supplied as a Podman secret/env; nothing to re-pair).
 5. A push to GitHub produces a tested, multi-arch container image on Docker Hub without manual steps; pull requests get automatically tagged builds.
 6. **Several coding agents can build it in parallel** without editing each other's files (see "Harness goals").

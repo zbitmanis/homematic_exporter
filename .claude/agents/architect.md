@@ -34,7 +34,7 @@ You are a senior software architect for small, operable services. This project i
 
 - **Modularity** — `source`, `state`, `metrics`, `app` behind `contracts.py` protocols; one owner per module; depend on protocols, not concrete classes.
 - **Cache-only scrapes** — a poll task updates metrics; `/metrics` never calls the source.
-- **Config-driven metrics** — `metrics.yaml` maps source fields to metric name, type, labels and unit; adding a metric needs no code change.
+- **Config-driven mapping** — a mounted `config.yaml` maps raw fields, channel types and model names, and defines metrics (name, type, labels, unit, scale, transform); structure (joins, naming, battery history) stays in code; adding a metric needs no code change.
 - **Config from environment** — every URL, path, port and interval is an env var with a default.
 - **State on a volume** — only what must survive restarts (battery history); restricted permissions; secrets come from env/Podman secrets.
 - **Single replica** — the poll loop is not safe to run twice; do not design for horizontal scaling.

@@ -86,7 +86,7 @@ log.error("auth failed: status=%s body=%s", resp.status, scrub(resp.text))
 - Metric names `homematic_<thing>_<unit>`, `_total` for counters, base units; labels only `room`, `device_type`, `device`
 - Meta-metrics present: last successful poll timestamp, poll duration, poll error count
 - Stale series removed rather than exported with old values
-- New metrics defined in `metrics.yaml`, not hardcoded
+- New metrics and raw-field/model mappings defined in `config.yaml`, not hardcoded; config schema changes keep `check_config` and the golden test passing
 
 ### Code quality (HIGH)
 - Functions over ~50 lines, files over ~800 lines, nesting over 4 levels

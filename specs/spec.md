@@ -6,7 +6,9 @@
 
 ## 1. Summary
 
-A single-replica Python service. A background task downloads the Homematic IP configuration every `POLL_INTERVAL_SECONDS`, parses it into an immutable `Snapshot`, updates Prometheus metrics from `metrics.yaml`, and tracks accumulator (battery) history on a state volume. `/metrics` serves cached values only. Read-only: it never writes to the heating system.
+A single-replica Python service. A background task downloads the Homematic IP configuration every `POLL_INTERVAL_SECONDS`, parses it into an immutable `Snapshot`, updates Prometheus metrics from the mounted `config.yaml`, and tracks accumulator (battery) history on a state volume. `/metrics` serves cached values only. Read-only: it never writes to the heating system.
+
+**Mapping is configuration, structure is code.** A mounted `config.yaml` (same idea as the Viessmann exporter's `/etc/viessman/config`) holds everything that may change without a code change: model-to-type names, raw field names, channel types, metric definitions, scaling and thresholds. Code keeps what is logic: the graph joins (device to room, naming, valves per room), battery history, derived metrics and polling.
 
 ```
  Homematic IP cloud --(library: auth, rate limit, download)--> raw JSON dict
@@ -29,7 +31,7 @@ A single-replica Python service. A background task downloads the Homematic IP co
 - R5. On shutdown the poll task is cancelled and awaited; no leaked tasks.
 
 **Data and metrics**
-- R6. All entity metrics (rooms, devices, valves, contacts, batteries) are defined in `metrics.yaml`; adding one needs no Python change (test: add an entry, see the series).
+- R6. All entity metrics (rooms, devices, valves, contacts, batteries) are defined in the mounted `config.yaml`; adding one, including a new numeric raw field via `extract.extras`, needs no Python change (test: add an entry, see the series).
 - R7. Metric names follow `homematic_<thing>_<unit>`; counters end `_total`; base units (celsius, ratio, seconds). Allowed labels: `room`, `device_type`, `device`.
 - R8. A value that is `None` in the snapshot produces **no series** (the series is removed if it existed). A device or room absent from a new snapshot has all its series removed. (Real case: room `girts` has no temperature/humidity while its sensor is unreachable.)
 - R9. Series count stays bounded: about 230 for the captured installation (see 6.7). Labels never contain SGTIN, serial, id or timestamp.
@@ -40,6 +42,11 @@ A single-replica Python service. A background task downloads the Homematic IP co
 - R12. Battery history survives restarts: `low_since` (set when `lowBat` becomes true, cleared when false) and `last_replaced` (set when `lowBat` goes true to false). Written atomically to `STATE_DIR` (dir 0700, files 0600); startup fails if permissions are looser.
 - R13. An unreachable device keeps its previous `lowBat` state (no transition is inferred while unreachable).
 - R14. History records for devices not seen for 90 days are pruned.
+
+**Configuration**
+- R19. `config.yaml` is validated at startup against a strict schema (unknown keys rejected, names/labels/scopes/fields/transforms checked); any error fails startup with the config path of the problem (for example `metrics[3].labels[1]: unknown label 'sgtin'`).
+- R20. `python -m homematic_exporter.check_config [--config PATH] [--fixture PATH]` validates a config and, with a fixture, prints the series it would produce. CI runs it against the shipped default config and the mini fixture and compares golden exposition text.
+- R21. Config location: `CONFIG_FILE` if set (must exist, else fail); otherwise `/etc/homematic-exporter/config/config.yaml` if present (the pod/volume mount); otherwise the default bundled in the image (`/app/default-config.yaml`). The chosen source is logged at INFO. The mount is read-only; the exporter never writes to it. Changes take effect on restart.
 
 **Security and ops**
 - R15. `HMIP_AUTH_TOKEN` and `HMIP_ACCESS_POINT` come from the environment only; they never appear in logs, metrics, `/status`, exceptions or the image.
@@ -52,37 +59,43 @@ A single-replica Python service. A background task downloads the Homematic IP co
 `src/homematic_exporter/contracts.py` (land first, human-reviewed; changes need a spec change):
 
 ```python
+Extras = Mapping[str, float | str | bool | None]   # config-defined raw fields (extract.extras)
+
 @dataclass(frozen=True, slots=True)
 class Room:
     name: str
     temperature_celsius: float | None
     setpoint_celsius: float | None
-    humidity_ratio: float | None          # 0..1
-    automatic_mode: bool | None           # controlMode == "AUTOMATIC"
-    window_open: bool | None              # group windowState OPEN/TILTED, None if unknown
+    humidity: float | None                 # raw source value (percent); scaled by the metric definition
+    control_mode: str | None               # raw, e.g. "AUTOMATIC"
+    window_state: str | None               # raw, e.g. "OPEN" | "TILTED" | "CLOSED"
+    extras: Extras
 
 @dataclass(frozen=True, slots=True)
 class Device:
-    name: str                              # "<room> <short-model>", unique (see 4)
+    name: str                              # "<room> <device_type>", unique (see 4)
     room: str                              # "system" if not in exactly one room
-    device_type: str                       # short model, e.g. "radiator-thermostat"
+    device_type: str                       # from extract.device_models
     low_battery: bool | None
     unreachable: bool | None
     undervoltage: bool | None
     rssi_dbm: int | None
+    extras: Extras
 
 @dataclass(frozen=True, slots=True)
 class Valve:
     room: str
-    device_type: str                       # "floor-valve" | "radiator-thermostat"
+    device_type: str                       # from the extract.valves rule, e.g. "floor-valve"
     device: str                            # "<room> floor-valve" or the radiator device name
     position_ratio: float | None
-    actual_temperature_celsius: float | None   # radiators only
+    actual_temperature_celsius: float | None   # where the rule maps it (radiators)
+    extras: Extras
 
 @dataclass(frozen=True, slots=True)
 class Contact:
     room: str; device_type: str; device: str
-    open: bool | None
+    window_state: str | None               # raw
+    extras: Extras
 
 @dataclass(frozen=True, slots=True)
 class Snapshot:
@@ -112,20 +125,23 @@ class StateStore(Protocol):
 
 | Module | Public interface | Notes |
 |---|---|---|
-| `source` | `CloudSource(access_point, token, timeout)`, `FileSource(path)`, `parse_snapshot(raw: dict, now: float) -> Snapshot` | Cloud uses `homematicip` `AsyncHome.init_async` + `download_configuration_async()` and parses the **raw JSON** itself, so tests need only the fixture and the library's object model is not a dependency of the parser. `FileSource` reads the same JSON (used by e2e and demos). |
+| `source` | `CloudSource(access_point, token, timeout, extract)`, `FileSource(path, extract)`, `parse_snapshot(raw: dict, now: float, extract: ExtractConfig) -> Snapshot` | Cloud uses `homematicip` `AsyncHome.init_async` + `download_configuration_async()` and parses the **raw JSON** itself, so tests need only the fixture and the library's object model is not a dependency of the parser. `FileSource` reads the same JSON (used by e2e and demos). |
 | `state` | `FileStateStore(dir)`, `BatteryHistory(store).update(devices, now) -> list[BatteryRecord]` | History logic (R12-R14) lives here, depends only on `contracts`. |
-| `metrics` | `Registry.build(config) -> Registry`, `Registry.update(snapshot, batteries)`, `Registry.exposition() -> bytes` | Pure; private `CollectorRegistry`. Derived metrics (section 6.5) are built in. |
-| `app` | `create_app(settings, source, store) -> FastAPI` | Lifespan owns the poll task. Meta-metrics here. |
+| `metrics` | `load_config(path) -> AppConfig` (schema, validation, R19-R21), `Registry.build(config.metrics)`, `Registry.update(snapshot, batteries)`, `Registry.exposition() -> bytes`, `check_config` entry point | Pure; private `CollectorRegistry`. Owns the config schema (pydantic v2, `extra=forbid`); `source` and `state` receive their config sections as typed objects. Derived metrics (6.5) and meta metrics (6.6) are built in. |
+| `app` | `create_app(settings, config, source, store) -> FastAPI` | Lifespan owns the poll task. Meta-metrics here. |
 
 ## 4. Parsing rules (source module, verified on the fixture)
 
+The **structure** below is code; every raw name, channel type and label shown is the **default value** from `config.yaml` (section 5.1), not a constant in Python.
+
 - **Rooms:** groups with `type == "HEATING"`; room name = group `label`. Fields: `actualTemperature`, `setPointTemperature`, `humidity`, `controlMode`, `windowState`.
 - **Device to room:** a device belongs to the room whose `HEATING` group lists it in `channels[].deviceId`. A device in exactly one room gets that room; in none or several rooms (the floor controller touches 8; the access point and circulation pump touch none) gets room `system`.
-- **Short model map:** `HmIP-eTRV-B-2 R4M` radiator-thermostat, `HmIP-STH` temp-humidity-sensor, `HmIP-STHD` temp-humidity-display, `HmIP-WTH-1` wall-thermostat, `HmIP-SWDM-2` door-window-contact, `HmIP-FALMOT-C12` floor-controller, `HmIP-FSM` circulation-pump-switch, `HmIP-HAP JS1` access-point. An unknown model becomes the lowercased model string and logs a warning once.
+- **Model to device_type** (`extract.device_models`): `HmIP-eTRV-B-2 R4M` radiator-thermostat, `HmIP-STH` temp-humidity-sensor, `HmIP-STHD` temp-humidity-display, `HmIP-WTH-1` wall-thermostat, `HmIP-SWDM-2` door-window-contact, `HmIP-FALMOT-C12` floor-controller, `HmIP-FSM` circulation-pump-switch, `HmIP-HAP JS1` access-point. An unmapped model becomes the lowercased model string and logs a warning once.
 - **Device name:** `"<room> <short-model>"`. Fixture check: 20 devices, 0 collisions. A collision at startup is fatal (intent Q7); at runtime see concern C1.
 - **Battery/radio fields** come from the channel whose type is `DEVICE_BASE*`, `DEVICE_OPERATIONLOCK` or `ACCESS_CONTROLLER_CHANNEL`: `lowBat`, `unreach`, `deviceUndervoltage`, `rssiDeviceValue`.
 - **Valves:** every `FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL` with a non-empty `groups` list becomes a `floor-valve` for the room that group names (channel 12 is unused and skipped); every `HEATING_THERMOSTAT_CHANNEL` becomes a `radiator-thermostat` valve for its device's room. Fixture: 11 floor + 4 radiator valves, each in exactly one room.
 - **Contacts:** `SHUTTER_CONTACT_CHANNEL.windowState`; `OPEN` or `TILTED` means open, `CLOSED` closed.
+- Fields listed in `extract.extras` are read from the group (scope `room`), the device base channel (`device`) or the matched channel (`valve`, `contact`) and stored in `extras` under the configured key.
 - Unknown or missing fields map to `None`, never raise.
 
 ## 5. Config (environment, with defaults)
@@ -139,28 +155,85 @@ class StateStore(Protocol):
 | `POLL_INTERVAL_SECONDS` | `30` | |
 | `HTTP_TIMEOUT_SECONDS` | `10` | per upstream call |
 | `STATE_DIR` | `/state` | battery history |
-| `METRICS_CONFIG` | `/app/metrics.yaml` | image ships a default |
+| `CONFIG_FILE` | unset | see R21: explicit path (must exist), else `/etc/homematic-exporter/config/config.yaml`, else the bundled default |
 | `LISTEN_HOST` / `LISTEN_PORT` | `0.0.0.0` / `9100` | |
 | `LOG_LEVEL` | `INFO` | |
 | `DEBUG_ROUTES` | `false` | enables `/status` (counts, last poll info, no secrets) |
-| `HEAT_DEMAND_MIN_POSITION` | `0.0` | valve position above this counts as open |
 
-## 6. Metric catalogue
+### 5.1 `config.yaml` (mounted read-only; default bundled in the image)
 
-### 6.1 `metrics.yaml` schema
+Environment keeps secrets and operations (token, access point, ports, intervals, paths). `config.yaml` keeps mapping and non-secret tuning. Default content (abridged; the full file ships as `config/default-config.yaml`):
 
 ```yaml
 version: 1
+tuning:
+  heat_demand_min_position: 0.0     # valve position above this counts as open
+  state_retention_days: 90
+extract:
+  system_room: system
+  room_group_type: HEATING          # groups of this type are rooms; room name = group label
+  device_models:                    # raw modelType -> device_type label
+    "HmIP-eTRV-B-2 R4M": radiator-thermostat
+    "HmIP-STH": temp-humidity-sensor
+    "HmIP-STHD": temp-humidity-display
+    "HmIP-WTH-1": wall-thermostat
+    "HmIP-SWDM-2": door-window-contact
+    "HmIP-FALMOT-C12": floor-controller
+    "HmIP-FSM": circulation-pump-switch
+    "HmIP-HAP JS1": access-point
+  rooms:                            # Room attribute: raw group field
+    temperature_celsius: actualTemperature
+    setpoint_celsius: setPointTemperature
+    humidity: humidity
+    control_mode: controlMode
+    window_state: windowState
+  device_flags:                     # Device attribute: raw field on the device base channels
+    low_battery: lowBat
+    unreachable: unreach
+    undervoltage: deviceUndervoltage
+    rssi_dbm: rssiDeviceValue
+  valves:
+    - channel_type: FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL
+      device_type: floor-valve
+      room_from: channel_groups     # room named by the channel's HEATING group; skip if none
+      fields: { position_ratio: valvePosition }
+    - channel_type: HEATING_THERMOSTAT_CHANNEL
+      device_type: radiator-thermostat
+      room_from: device_room
+      fields: { position_ratio: valvePosition, actual_temperature_celsius: valveActualTemperature }
+  contacts:
+    - channel_type: SHUTTER_CONTACT_CHANNEL
+      fields: { window_state: windowState }
+  extras: []                        # e.g. - { scope: room, key: boost_duration, field: boostDuration }
 metrics:
-  - name: homematic_room_temperature_celsius
-    type: gauge                 # gauge only for entity metrics in v1
-    help: Room temperature
-    entity: rooms               # rooms | devices | valves | contacts | batteries
-    field: temperature_celsius  # attribute of the contracts dataclass
-    labels: [room]              # must be a subset of the entity's label fields
-    transform: none             # none | bool_to_int
+  - { name: homematic_room_temperature_celsius, help: Room temperature, type: gauge,
+      scope: rooms, value: temperature_celsius, labels: [room] }
+  - { name: homematic_room_humidity_ratio, help: Room relative humidity, type: gauge,
+      scope: rooms, value: humidity, scale: 0.01, labels: [room] }
+  - { name: homematic_room_automatic_mode, help: 1 if the room is in automatic mode, type: gauge,
+      scope: rooms, value: control_mode, transform: { equals: AUTOMATIC }, labels: [room] }
+  - { name: homematic_room_window_open, help: 1 if the window is open or tilted, type: gauge,
+      scope: rooms, value: window_state, transform: { in: [OPEN, TILTED] }, labels: [room] }
+  # ... one entry per row of 6.2 - 6.4
 ```
-Validation (fail at startup): name pattern, allowed labels, known entity/field, unique names. `yaml.safe_load` only.
+
+Why not paths like the Viessmann config: the Homematic JSON is a graph (rooms are groups that list device channels). Joins stay in code; only names and rules are configurable.
+
+## 6. Metric catalogue
+
+### 6.1 Metric definition schema (the `metrics:` list of `config.yaml`)
+
+```yaml
+- name: homematic_room_temperature_celsius   # ^homematic_[a-z0-9_]+$
+  help: Room temperature
+  type: gauge                  # gauge only for entity metrics in v1
+  scope: rooms                 # rooms | devices | valves | contacts | batteries
+  value: temperature_celsius   # attribute of the contracts dataclass, or extras.<key>
+  labels: [room]               # subset of the scope's label fields; allowed: room, device_type, device
+  scale: 1.0                   # optional multiplier (humidity: 0.01)
+  transform: none              # none | bool | { equals: X } | { in: [A, B] }  -> 1/0
+```
+Validation (R19), at startup: name pattern and uniqueness, labels within the whitelist and available for the scope, scope and value exist, transform valid, `scale` numeric. `yaml.safe_load` only; unknown keys rejected.
 
 ### 6.2 Room metrics (entity `rooms`, label `room`)
 
@@ -168,9 +241,9 @@ Validation (fail at startup): name pattern, allowed labels, known entity/field, 
 |---|---|---|
 | `homematic_room_temperature_celsius` | HEATING `actualTemperature` | group value; individual sensors are not exported in v1 |
 | `homematic_room_setpoint_celsius` | `setPointTemperature` | |
-| `homematic_room_humidity_ratio` | `humidity` / 100 | |
-| `homematic_room_automatic_mode` | `controlMode == AUTOMATIC` | 1 automatic, 0 manual |
-| `homematic_room_window_open` | group `windowState` | omitted when `None` |
+| `homematic_room_humidity_ratio` | `humidity`, `scale: 0.01` | percent to ratio |
+| `homematic_room_automatic_mode` | `control_mode`, `transform: {equals: AUTOMATIC}` | 1 automatic, 0 manual |
+| `homematic_room_window_open` | `window_state`, `transform: {in: [OPEN, TILTED]}` | omitted when `None` |
 
 ### 6.3 Valve and contact metrics (labels `room`, `device_type`, `device`)
 
@@ -178,7 +251,7 @@ Validation (fail at startup): name pattern, allowed labels, known entity/field, 
 |---|---|---|
 | `homematic_valve_position_ratio` | valves.position_ratio | floor channels and radiators |
 | `homematic_valve_actual_temperature_celsius` | valves.actual_temperature_celsius | radiators only |
-| `homematic_contact_open` | contacts.open | door/window contact |
+| `homematic_contact_open` | contacts.window_state, `transform: {in: [OPEN, TILTED]}` | door/window contact |
 
 ### 6.4 Device and battery metrics (labels `room`, `device_type`, `device`)
 
@@ -195,7 +268,7 @@ Validation (fail at startup): name pattern, allowed labels, known entity/field, 
 
 | Metric | Definition |
 |---|---|
-| `homematic_valves_open` | count of valves with position > `HEAT_DEMAND_MIN_POSITION` |
+| `homematic_valves_open` | count of valves with position > `tuning.heat_demand_min_position` |
 | `homematic_heat_demand` | 1 if `homematic_valves_open` > 0 else 0 (proxy for boiler demand; boiler/pump `on` is not reported by this installation) |
 
 ### 6.6 Meta (built in)
@@ -247,18 +320,19 @@ Per device name, persisted as JSON under key `battery`:
 - **Unit:** parser (every rule in section 4, golden `Snapshot`), `BatteryHistory` (transitions, unreachable, prune, restart), `Registry` (golden exposition text, series removal, label whitelist, YAML validation errors), settings parsing.
 - **App:** fake `Source`: failures counted and survived, `/metrics` never calls the source, `/health` 503 when the task dies, clean shutdown, no secrets in logs (caplog assertions).
 - **E2E (`tests/e2e/`, `pytest -m e2e`):** start the app with `SOURCE_KIND=file`; break/replace the file to simulate failures; restart with the same `STATE_DIR`; state permissions; then the same against the built image with `podman run`.
+- **Config:** schema tests (every R19 error class, with its config path), `check_config` against the shipped default plus the mini fixture with a **golden exposition file**, an `extras` test (add a field by config only), and a fallback-order test for R21.
 - **Gate:** `ruff check`, `ruff format --check`, `mypy src` (strict), `pytest -q`, `pip-audit`, `check_licenses.py`.
 
 ## 11. Container and deployment
 
 - Image per `Dockerfile` (multi-stage, non-root uid 10001, `/state` volume, port 9100, `/licenses/`); built for `linux/amd64` and `linux/arm64` by CI.
-- The image must also ship the default `metrics.yaml` (`COPY metrics.yaml /app/metrics.yaml`): **Dockerfile change needed** with the metrics module.
-- Podman Quadlet (`deploy/homematic-exporter.container`): single replica, `Secret=` for the token and access point, state volume, read-only root fs, `HealthCmd` against `/health`, port published on the internal network only.
+- The image ships the default config (`COPY config/default-config.yaml /app/default-config.yaml`): **Dockerfile change needed** with the metrics module. Operators override it by mounting a directory at `/etc/homematic-exporter/config/` (read-only).
+- Podman Quadlet (`deploy/homematic-exporter.container`): single replica, `Secret=` for the token and access point, state volume, read-only root fs, `HealthCmd` against `/health`, port published on the internal network only, `Volume=<config dir>:/etc/homematic-exporter/config:ro` (in a Kubernetes pod: a ConfigMap mounted at the same path).
 
 ## 12. Work split (parallel agents, one module per worktree)
 
 1. `contracts.py` (human-reviewed first).
-2. In parallel: `source` (parser + file + cloud), `state` (store + battery history), `metrics` (registry + YAML + default `metrics.yaml`).
+2. In parallel: `source` (parser + file + cloud), `state` (store + battery history), `metrics` (config schema + registry + `check_config` + `config/default-config.yaml`).
 3. `app` against fakes; then e2e, Dockerfile update, Quadlet unit, alert rules.
 
 Each module starts with its own `specs/plan.md` entry (files, order, risks, proof).
@@ -274,6 +348,9 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 - **C7. Library behaviour.** `download_configuration_async` and the `init_async` signature were read from `homematicip` 2.23.1 source; the websocket and library object model are unused. The pinned version plus the fixture protect against API drift.
 - **C8. Rate limiting.** The library's own rate limiter stays on; 30 s polling downloads about 130 KB each time (about 15 MB/hour). Acceptable; raise the interval if the cloud throttles.
 - **C9. RSSI unit.** `dBm` is not an SI base unit but is the conventional Prometheus choice for radio level.
+- **C11. Config typo risk.** A wrong raw field name in `config.yaml` yields `None` and therefore a missing series, not an error. Mitigations: golden test on the default config, `check_config --fixture` listing series per metric, and a startup log line with the series count; a metric that produces zero series for two consecutive polls logs a warning.
+- **C12. Reload.** Restart to apply config changes (v1). A SIGHUP reload is possible later; not needed for a 30 s-poll hobby exporter.
+- **C13. Config file vs env.** Access point and token stay in env/secrets, not in `config.yaml` (unlike the installation id in the Viessmann config), so the mounted file can be shared or committed.
 - **C10. Not yet verified live:** nothing here has run against the real API except the one-off state download that produced the fixture.
 
 ## 14. Traceability
@@ -286,4 +363,5 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 | Q4 token via secret | R15, section 5 |
 | Q5 boiler state | 6.5 |
 | Q7 device naming | section 4, C1 |
+| Config-driven mapping (mounted file, no hardcoded values) | section 5.1, 6.1, R6, R19-R21, C11-C13 |
 | CI/CD, image, licensing | section 11, `docs/ci/README.md`, `THIRD_PARTY_NOTICES.md` |
