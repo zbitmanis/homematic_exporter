@@ -163,3 +163,31 @@ def test_pathological_inputs_stay_fast(chunk: str) -> None:
     start = time.perf_counter()
     scrub(big, secrets=["abc", "s3cr3t!"])
     assert time.perf_counter() - start < 2.0
+
+
+@pytest.mark.parametrize(
+    ("text", "leak"),
+    [
+        ("private_key=abc123", "abc123"),
+        ("access_key: abc123", "abc123"),
+        ("sessionid=abc123", "abc123"),
+        ("passphrase=abc123", "abc123"),
+        ("credentials=abc123", "abc123"),
+    ],
+)
+def test_more_credential_key_names_are_redacted(text: str, leak: str) -> None:
+    assert leak not in scrub(text)
+
+
+def test_documented_over_redaction_and_unrecognised_keys_are_pinned() -> None:
+    for over in ("tokenizer=bpe", "secretary=bob", "cookie_policy=strict", "passwordless=true"):
+        assert REDACTED in scrub(over)  # over-redaction is accepted
+    assert scrub("api key=abc") == "api key=abc"  # a key with a space is not recognised
+    assert scrub("key=abc") == "key=abc"
+
+
+def test_a_few_secrets_on_a_large_text_stay_fast() -> None:
+    big = "A" * 1_000_000
+    start = time.perf_counter()
+    scrub(big, secrets=["s3cr3t!", "3014F711A0000000000A1B2C", "tok"])
+    assert time.perf_counter() - start < 2.0

@@ -7,8 +7,11 @@ Status codes and message words around a credential survive.
 
 Known limits (pinned by tests): an unquoted credential value ends at the next whitespace, so
 quote values that contain spaces; bare tokens with no key and no `Bearer` are only caught through
-the `secrets=` argument; words that merely contain a credential word (`mapping`, `author`) are
-left alone.
+the `secrets=` argument; keys with a space (`api key=abc`) and a bare `key=` are not recognised;
+words that merely contain a credential word (`mapping`, `author`) are left alone, but keys that
+contain one as a substring are over-redacted (`tokenizer`, `secretary`, `cookie_policy`,
+`passwordless`). The `secrets=` matching costs O(text length x number of secrets x 6 variants): it
+is meant for a handful of secrets and log-sized text, not megabytes with hundreds of secrets.
 """
 
 import base64
@@ -40,10 +43,15 @@ _CREDENTIAL_WORDS = (
     "token",
     "password",
     "passwd",
+    "passphrase",
     "secret",
     "apikey",
+    "privatekey",
+    "accesskey",
     "clientauth",
     "authorization",
+    "credential",
+    "sessionid",
     "cookie",
 )
 # Header lines whose unquoted value is a whole credential string (Digest params, cookie lists).
