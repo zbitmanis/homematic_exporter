@@ -28,6 +28,10 @@ def _reject_constant(name: str) -> object:
     raise ValueError("non-finite number")
 
 
+def _warn_unreadable(key: str, exc: OSError) -> None:
+    logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
+
+
 class FileStateStore:
     """One JSON file per key under `directory`. Never echoes stored values."""
 
@@ -69,30 +73,8 @@ class FileStateStore:
         return self._dir / f"{key}.json"
 
     def load(self, key: str) -> dict[str, object] | None:
-        path = self._path(key)
-        try:
-            # O_NONBLOCK: opening a FIFO must not block; O_NOFOLLOW: no symlinked state files.
-            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        except FileNotFoundError:
-            return None
-        except OSError as exc:
-            logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
-            return None
-        try:
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
-                os.close(fd)
-                logger.warning("state key %r is not a regular file; starting empty", key)
-                return None
-            handle = os.fdopen(fd, "rb")  # takes ownership of fd on success
-        except OSError as exc:
-            os.close(fd)
-            logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
-            return None
-        try:
-            with handle:
-                raw = handle.read(MAX_STATE_BYTES + 1)
-        except OSError as exc:
-            logger.warning("state key %r unreadable (%s); starting empty", key, type(exc).__name__)
+        raw = self._read_bytes(key, self._path(key))
+        if raw is None:
             return None
         if len(raw) > MAX_STATE_BYTES:
             logger.warning("state key %r is too large; starting empty", key)
@@ -106,6 +88,34 @@ class FileStateStore:
             logger.warning("state key %r has an unexpected shape; starting empty", key)
             return None
         return data
+
+    @staticmethod
+    def _read_bytes(key: str, path: Path) -> bytes | None:
+        """Read at most MAX_STATE_BYTES + 1 bytes; None (after logging) if unusable or absent."""
+        try:
+            # O_NONBLOCK: opening a FIFO must not block; O_NOFOLLOW: no symlinked state files.
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            _warn_unreadable(key, exc)
+            return None
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                os.close(fd)
+                logger.warning("state key %r is not a regular file; starting empty", key)
+                return None
+            handle = os.fdopen(fd, "rb")  # takes ownership of fd on success
+        except OSError as exc:
+            os.close(fd)
+            _warn_unreadable(key, exc)
+            return None
+        try:
+            with handle:
+                return handle.read(MAX_STATE_BYTES + 1)
+        except OSError as exc:
+            _warn_unreadable(key, exc)
+            return None
 
     def _fsync_dir(self) -> None:
         try:

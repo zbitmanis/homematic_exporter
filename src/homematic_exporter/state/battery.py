@@ -84,13 +84,7 @@ class BatteryHistory:
         return records
 
     def update(self, devices: Sequence[Device], now: float) -> list[BatteryRecord]:
-        try:
-            if not math.isfinite(now) or not MIN_TIMESTAMP <= now <= MAX_TIMESTAMP:
-                raise ValueError
-            today = datetime.fromtimestamp(now, UTC).date()
-            cutoff = today - self._retention  # all date maths up front: no partial mutation
-        except (ValueError, OverflowError, OSError):
-            raise ValueError("invalid timestamp") from None
+        today, cutoff = self._today_and_cutoff(now)  # all date maths up front: no partial mutation
         today_s = today.isoformat()
         dirty = self._unsaved
         result: list[BatteryRecord] = []
@@ -98,32 +92,10 @@ class BatteryHistory:
         for dev in devices:
             rec = self._records.get(dev.name)
             if rec is None:
-                low_since = now if dev.low_battery is True and dev.unreachable is not True else None
-                rec = {
-                    "room": dev.room,
-                    "device_type": dev.device_type,
-                    "low_since": low_since,
-                    "last_replaced": None,
-                    "last_seen_day": today_s,
-                }
-                self._records[dev.name] = rec
+                rec = self._records[dev.name] = _new_record(dev, now, today_s)
                 dirty = True
-            else:
-                if rec["room"] != dev.room or rec["device_type"] != dev.device_type:
-                    rec["room"], rec["device_type"] = dev.room, dev.device_type
-                    dirty = True
-                if dev.unreachable is not True and dev.low_battery is not None:
-                    was_low = rec["low_since"] is not None
-                    if dev.low_battery and not was_low:
-                        rec["low_since"] = now
-                        dirty = True
-                    elif not dev.low_battery and was_low:
-                        rec["last_replaced"] = now
-                        rec["low_since"] = None
-                        dirty = True
-                if rec["last_seen_day"] != today_s:
-                    rec["last_seen_day"] = today_s
-                    dirty = True
+            elif _refresh_record(rec, dev, now, today_s):
+                dirty = True
             result.append(
                 BatteryRecord(
                     device=dev.name,
@@ -140,24 +112,66 @@ class BatteryHistory:
 
         self._unsaved = dirty
         if dirty:
-            try:
-                self._store.save(KEY, {"version": _VERSION, "records": self._records})
-            except OSError as exc:
-                # Keep serving; the next update retries because `_unsaved` stays set.
-                last = self._last_failure_log
-                if last is None or not 0 <= now - last < LOG_INTERVAL_SECONDS:
-                    logger.warning(
-                        "battery history save failed (%s); will retry", type(exc).__name__
-                    )
-                    self._last_failure_log = now
-                self._failing = True
-            else:
-                self._unsaved = False
-                if self._failing:
-                    logger.info("state saved after earlier failures")
-                self._failing = False
-                self._last_failure_log = None
+            self._save(now)
         return result
+
+    def _today_and_cutoff(self, now: float) -> tuple[date, date]:
+        try:
+            if not math.isfinite(now) or not MIN_TIMESTAMP <= now <= MAX_TIMESTAMP:
+                raise ValueError
+            today = datetime.fromtimestamp(now, UTC).date()
+            return today, today - self._retention
+        except (ValueError, OverflowError, OSError):
+            raise ValueError("invalid timestamp") from None
+
+    def _save(self, now: float) -> None:
+        try:
+            self._store.save(KEY, {"version": _VERSION, "records": self._records})
+        except OSError as exc:
+            # Keep serving; the next update retries because `_unsaved` stays set.
+            last = self._last_failure_log
+            if last is None or not 0 <= now - last < LOG_INTERVAL_SECONDS:
+                logger.warning("battery history save failed (%s); will retry", type(exc).__name__)
+                self._last_failure_log = now
+            self._failing = True
+            return
+        self._unsaved = False
+        if self._failing:
+            logger.info("state saved after earlier failures")
+        self._failing = False
+        self._last_failure_log = None
+
+
+def _new_record(dev: Device, now: float, today_s: str) -> _Stored:
+    low_since = now if dev.low_battery is True and dev.unreachable is not True else None
+    return {
+        "room": dev.room,
+        "device_type": dev.device_type,
+        "low_since": low_since,
+        "last_replaced": None,
+        "last_seen_day": today_s,
+    }
+
+
+def _refresh_record(rec: _Stored, dev: Device, now: float, today_s: str) -> bool:
+    """Apply the current reading to a known record; return whether anything changed."""
+    changed = False
+    if rec["room"] != dev.room or rec["device_type"] != dev.device_type:
+        rec["room"], rec["device_type"] = dev.room, dev.device_type
+        changed = True
+    if dev.unreachable is not True and dev.low_battery is not None:
+        was_low = rec["low_since"] is not None
+        if dev.low_battery and not was_low:
+            rec["low_since"] = now
+            changed = True
+        elif not dev.low_battery and was_low:
+            rec["last_replaced"] = now
+            rec["low_since"] = None
+            changed = True
+    if rec["last_seen_day"] != today_s:
+        rec["last_seen_day"] = today_s
+        changed = True
+    return changed
 
 
 def _float(value: object) -> float | None:
