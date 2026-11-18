@@ -2,7 +2,7 @@
 
 - **Status:** draft for owner review (generated from `intent/homematic-exporter.intent.md`, accepted 2026-11-18)
 - **Inputs:** intent, `docs/spikes/homematicip-spike.md`, the captured fixture (20 devices, 12 rooms; local only), `docs/sbom/components.md`, `docs/ci/README.md`
-- **Next artifact:** `specs/plan.md` per module task (template in `specs/README.md`)
+- **Next artifact:** one plan per module task in `specs/plans/<module>.md` (template in `specs/README.md`); master plan, review phases and review log in `specs/plan.md`
 
 ## 1. Summary
 
@@ -41,11 +41,11 @@ A single-replica Python service. A background task downloads the Homematic IP co
 - R11. Per device: `low_battery`, `unreachable`, `undervoltage`, `rssi_dbm` are exported from the device base channel.
 - R12. Battery history survives restarts: `low_since` (set when `lowBat` becomes true, cleared when false) and `last_replaced` (set when `lowBat` goes true to false). Written atomically to `STATE_DIR` (dir 0700, files 0600); startup fails if permissions are looser.
 - R13. An unreachable device keeps its previous `lowBat` state (no transition is inferred while unreachable).
-- R14. History records for devices not seen for 90 days are pruned.
+- R14. History records for devices not seen for `tuning.state_retention_days` (default 90) are pruned.
 
 **Configuration**
 - R19. `config.yaml` is validated at startup against a strict schema (unknown keys rejected, names/labels/scopes/fields/transforms checked); any error fails startup with the config path of the problem (for example `metrics[3].labels[1]: unknown label 'sgtin'`).
-- R20. `python -m homematic_exporter.check_config [--config PATH] [--fixture PATH]` validates a config and, with a fixture, prints the series it would produce. CI runs it against the shipped default config and the mini fixture and compares golden exposition text.
+- R20. `python -m homematic_exporter.check_config [--config PATH] [--fixture PATH]` validates a config and, with a fixture, prints the series it would produce. It is a **tool module** (task 4, see section 12): it may import every module, because the fixture-to-series path needs `source.parse_snapshot` and `metrics` may not import `source`. CI runs it against the shipped default config and the mini fixture and compares golden exposition text.
 - R21. Config location: `CONFIG_FILE` if set (must exist, else fail); otherwise `/etc/homematic-exporter/config/config.yaml` if present (the pod/volume mount); otherwise the default bundled in the image (`/app/default-config.yaml`). The chosen source is logged at INFO. The mount is read-only; the exporter never writes to it. Changes take effect on restart.
 
 **Config generator**
@@ -128,12 +128,17 @@ class StateStore(Protocol):
 
 `src/homematic_exporter/config_models.py` is the second shared contract (added in the contracts task, see `specs/plan.md`): pydantic models `ExtractConfig` (with `ValveRule`, `ContactRule`, `ExtraField`) and `Tuning`, the validated `extract` and `tuning` sections of `config.yaml`. They must be shared because `source` needs `ExtractConfig` and `state` needs `Tuning`, while modules may not import each other; `metrics` composes them into `AppConfig` together with the metric definitions. Same rule as `contracts.py`: changes need a spec change in the same commit.
 
+`src/homematic_exporter/redact.py` is the third shared contract (phase-2 readiness task): pure `scrub(text, secrets) -> str` that replaces the given secrets, credential-looking `key[:=]value` pairs (`authToken`, `CLIENTAUTH`, `Authorization`, `pin`, `token`, also quoted JSON and `Bearer`) and 24-hex SGTINs with `[REDACTED]`. Anything that raises or logs upstream text uses it: `source` when it builds `UpstreamError` bodies, `app` in a logging filter for every other exception (R15, section 9).
+
+`contracts.py` also defines `NameCollisionError` and `CollisionPolicy = Literal["error", "suffix"]` (see `parse_snapshot` below and C1). Dataclasses holding `extras` are frozen but not hashable; key collections by name.
+
 | Module | Public interface | Notes |
 |---|---|---|
-| `source` | `CloudSource(access_point, token, timeout, extract)`, `FileSource(path, extract)`, `parse_snapshot(raw: dict, now: float, extract: ExtractConfig) -> Snapshot` | Cloud uses `homematicip` `AsyncHome.init_async` + `download_configuration_async()` and parses the **raw JSON** itself, so tests need only the fixture and the library's object model is not a dependency of the parser. `FileSource` reads the same JSON (used by e2e and demos). |
-| `state` | `FileStateStore(dir)`, `BatteryHistory(store).update(devices, now) -> list[BatteryRecord]` | History logic (R12-R14) lives here, depends only on `contracts`. |
-| `metrics` | `load_config(path) -> AppConfig` (schema, validation, R19-R21), `Registry.build(config.metrics)`, `Registry.update(snapshot, batteries)`, `Registry.exposition() -> bytes`, `check_config` entry point | Pure; private `CollectorRegistry`. Owns the config schema (pydantic v2, `extra=forbid`); `source` and `state` receive their config sections as typed objects. Derived metrics (6.5) and meta metrics (6.6) are built in. |
-| `app` | `create_app(settings, config, source, store) -> FastAPI` | Lifespan owns the poll task. Meta-metrics here. |
+| `source` | `CloudSource(access_point, token, timeout, extract)`, `FileSource(path, extract)`, `parse_snapshot(raw: dict, now: float, extract: ExtractConfig, on_collision: CollisionPolicy = "error") -> Snapshot` | Cloud uses `homematicip` `AsyncHome.init_async` + `download_configuration_async()` and parses the **raw JSON** itself, so tests need only the fixture and the library's object model is not a dependency of the parser. `FileSource` reads the same JSON (e2e, demos). `on_collision="error"` raises `NameCollisionError`; `"suffix"` appends `-2`, `-3` ordered by SGTIN. Upstream failures raise `UpstreamError` with a body scrubbed by `redact.scrub`. |
+| `state` | `FileStateStore(dir)`, `BatteryHistory(store: StateStore, tuning: Tuning)`, `BatteryHistory.update(devices: Sequence[Device], now: float) -> list[BatteryRecord]` | History logic (R12-R14, section 8) lives here; depends only on `contracts` and `config_models`. Returns records **only for devices in the given list** (R8); records of absent devices stay stored until pruned. |
+| `metrics` | `load_config(path) -> AppConfig` (schema, validation, R19-R21), `Registry.build(metric_defs, tuning)`, `Registry.update(snapshot, batteries)`, `Registry.record_success(timestamp, duration)`, `Registry.record_error()`, `Registry.exposition() -> bytes`, `render(config, snapshot, batteries=()) -> bytes` | Pure; one private `CollectorRegistry`. Owns the config schema (pydantic v2, `extra=forbid`) and **all** metrics including derived (6.5) and meta (6.6): `app` only calls `record_success`/`record_error`. `homematic_data_age_seconds` has no series until the first `record_success`. `render` builds a registry, updates it and returns the exposition: golden tests use a hand-built `Snapshot`. `source` and `state` receive their config sections as typed objects. |
+| `app` | `create_app(*, settings=None, config=None, source=None, store=None) -> FastAPI` | All parameters default to values derived from the environment, so `uvicorn --factory homematic_exporter.app:create_app` works with no arguments; tests inject fakes. `app/wiring.py` is the only place that imports concrete `source`, `state` and `metrics` implementations; the rest of `app` uses the contract protocols. Lifespan owns the poll task, calls `record_success`/`record_error`, installs a logging filter built on `redact.scrub` (secrets from settings), and passes `on_collision="error"` until the first successful poll, then `"suffix"` with a WARNING (C1). |
+| tools (`check_config.py`, `generate_config.py`, top-level) | `python -m homematic_exporter.check_config`, `python -m homematic_exporter.generate_config` | Task 4 and 5. May import every module; not part of the runtime path. Own the fixture-to-exposition integration golden test. |
 
 ## 4. Parsing rules (source module, verified on the fixture)
 
@@ -238,6 +243,18 @@ Why not paths like the Viessmann config: the Homematic JSON is a graph (rooms ar
   scale: 1.0                   # optional multiplier (humidity: 0.01)
   transform: none              # none | bool | { equals: X } | { in: [A, B] }  -> 1/0
 ```
+**Scope and label mapping** (one table, used by validation and the registry):
+
+| Metric `scope` | `extract.extras` `scope` | Label `room` | Label `device_type` | Label `device` | `value` attributes |
+|---|---|---|---|---|---|
+| `rooms` | `room` | `Room.name` | - | - | `Room.*`, `extras.<key>` |
+| `devices` | `device` | `Device.room` | `Device.device_type` | `Device.name` | `Device.*`, `extras.<key>` |
+| `valves` | `valve` | `Valve.room` | `Valve.device_type` | `Valve.device` | `Valve.*`, `extras.<key>` |
+| `contacts` | `contact` | `Contact.room` | `Contact.device_type` | `Contact.device` | `Contact.*`, `extras.<key>` |
+| `batteries` | - | `BatteryRecord.room` | `BatteryRecord.device_type` | `BatteryRecord.device` | `low_since`, `last_replaced` |
+
+(`extras` scopes are singular, metric scopes plural; the mapping is fixed.)
+
 Validation (R19), at startup: name pattern and uniqueness, labels within the whitelist and available for the scope, scope and value exist, transform valid, `scale` numeric. `yaml.safe_load` only; unknown keys rejected.
 
 ### 6.2 Room metrics (entity `rooms`, label `room`)
@@ -310,38 +327,45 @@ Per device name, persisted as JSON under key `battery`:
 - first sight, `lowBat = true`: `low_since = now` (approximate: true start unknown, see C3)
 - `false` to `true`: `low_since = now`
 - `true` to `false`: `last_replaced = now`, `low_since = None`
-- unreachable device: record unchanged (R13)
+- unreachable device (`unreachable` is true): record unchanged (R13); if it has no record yet, create one with `low_since = None` and no `last_replaced` (no state is inferred)
+- `low_battery` is `None` (unknown): record unchanged, no transition
 - save only when a record changed; atomic write (temp file + `os.replace`)
-- prune records unseen for 90 days (R14)
+- prune records unseen for `tuning.state_retention_days` (R14)
+- `update` returns records for the devices passed in only (R8)
 - a renamed device is a new record (old one is pruned later)
 
 ## 9. Logging
 
-`logging` with a stable single-line format. On poll failure: level `ERROR`, message includes status and upstream body after scrubbing `HMIP_AUTH_TOKEN`, `HMIP_ACCESS_POINT`, SGTIN-like 24-hex strings and any `AUTHTOKEN`/`CLIENTAUTH` header values. Never `repr()` of settings or request objects.
+`logging` with a stable single-line format. On poll failure: level `ERROR`, message includes status and upstream body after `redact.scrub(text, secrets=[HMIP_AUTH_TOKEN, HMIP_ACCESS_POINT])` (also removes SGTIN-like 24-hex strings and `AUTHTOKEN`/`CLIENTAUTH`/`Authorization`/`pin`/`token` values). `app` installs a logging filter that applies the same function to every record, so unexpected exceptions are scrubbed too. Never `repr()` of settings or request objects.
 
 ## 10. Test strategy
 
-- **Fixtures:** `tests/source/fixtures/mini_state.json`, hand-written and scrubbed, derived from the capture. Must include: two rooms, one device per model type, one `lowBat`, one unreachable device (room with `None` temperature), floor channels with and without groups, a device in several rooms, an open/closed contact. The full capture stays local and git-ignored.
-- **Unit:** parser (every rule in section 4, golden `Snapshot`), `BatteryHistory` (transitions, unreachable, prune, restart), `Registry` (golden exposition text, series removal, label whitelist, YAML validation errors), settings parsing.
+- **Fixtures:** `tests/source/fixtures/mini_state.json`, hand-written and scrubbed, derived from the capture: three rooms, ten devices incl. an access point (`ACCESS_CONTROLLER_CHANNEL`), one `lowBat`, one unreachable device (room with `None` temperature), floor channels with and without groups, a device in several rooms, a closed and an open contact, an unmapped model and an `extras` example (`boostDuration`). The `collision_state` fixture in `tests/conftest.py` derives a variant with two same-named devices. `default_extract` and `default_tuning` fixtures load `config/default-config.yaml`, the single shared copy. The full capture stays local and git-ignored.
+- **Unit:** parser (every rule in section 4, golden `Snapshot`), `BatteryHistory` (transitions, unreachable, prune, restart), `Registry` (golden exposition text from a hand-built `Snapshot`, series removal, label whitelist, YAML validation errors), settings parsing, `redact.scrub`, and the import-boundary test (`tests/test_import_boundaries.py`).
 - **App:** fake `Source`: failures counted and survived, `/metrics` never calls the source, `/health` 503 when the task dies, clean shutdown, no secrets in logs (caplog assertions).
 - **E2E (`tests/e2e/`, `pytest -m e2e`):** start the app with `SOURCE_KIND=file`; break/replace the file to simulate failures; restart with the same `STATE_DIR`; state permissions; then the same against the built image with `podman run`.
-- **Config:** schema tests (every R19 error class, with its config path), `check_config` against the shipped default plus the mini fixture with a **golden exposition file**, an `extras` test (add a field by config only), and a fallback-order test for R21.
-- **Gate:** `ruff check`, `ruff format --check`, `mypy src` (strict), `pytest -q`, `pip-audit`, `check_licenses.py`.
+- **Config:** schema tests (every R19 error class, with its config path), the integration golden test (mini fixture through `parse_snapshot` into `render`, compared with a golden exposition file) and `check_config` against the shipped default, both in task 4 where `source` and `metrics` meet, an `extras` test (add a field by config only), and a fallback-order test for R21.
+- **Gate:** `ruff check`, `ruff format --check`, `mypy src tests` (strict), `pytest -q`, `pip-audit`, `check_licenses.py`.
 
 ## 11. Container and deployment
 
 - Image per `Dockerfile` (multi-stage, non-root uid 10001, `/state` volume, port 9100, `/licenses/`); built for `linux/amd64` and `linux/arm64` by CI.
-- The image ships the default config (`COPY config/default-config.yaml /app/default-config.yaml`): **Dockerfile change needed** with the metrics module. Operators override it by mounting a directory at `/etc/homematic-exporter/config/` (read-only).
+- The image ships the default config (`COPY config/default-config.yaml /app/default-config.yaml`): **Dockerfile change needed** in task 4 (deploy), not in the metrics task. Operators override it by mounting a directory at `/etc/homematic-exporter/config/` (read-only).
 - Podman Quadlet (`deploy/homematic-exporter.container`): single replica, `Secret=` for the token and access point, state volume, read-only root fs, `HealthCmd` against `/health`, port published on the internal network only, `Volume=<config dir>:/etc/homematic-exporter/config:ro` (in a Kubernetes pod: a ConfigMap mounted at the same path).
 
 ## 12. Work split (parallel agents, one module per worktree)
 
-1. `contracts.py` (human-reviewed first).
-2. In parallel: `source` (parser + file + cloud), `state` (store + battery history), `metrics` (config schema + registry + `check_config` + `config/default-config.yaml`).
-3. `app` against fakes; then e2e, Dockerfile update, Quadlet unit, alert rules.
-4. `generate_config` (tool module, not part of the runtime path; may import `source` and `metrics`), after the config schema exists.
+1. `contracts.py`, `config_models.py`, `redact.py`, fixture, default `extract`/`tuning` config: done (tasks 1 and 1b), human-reviewed.
+2. In parallel, one plan each (`specs/plans/<module>.md`): `source` (parser, `FileSource`, `CloudSource`), `state` (store, battery history), `metrics` (config schema and loading, registry, derived and meta metrics, the `metrics:` list of the default config).
+3. `app` (poll loop, routes, wiring, logging filter) against fakes; then e2e.
+4. Tools and deployment: `check_config`, integration golden test, Dockerfile update, Quadlet unit, alert rules.
+5. `generate_config` (tool module; after the config schema exists).
 
-Each module starts with its own `specs/plan.md` entry (files, order, risks, proof).
+### 12.1 Rules for phase-2 agents
+- Edit only your module's directory under `src/homematic_exporter/<module>/`, its tests under `tests/<module>/`, and your plan `specs/plans/<module>.md`. `metrics` may also edit the `metrics:` list of `config/default-config.yaml` (not `extract`/`tuning`).
+- Do **not** edit: `contracts.py`, `config_models.py`, `redact.py`, `specs/spec.md`, `pyproject.toml`, root `CLAUDE.md`, `Dockerfile`, `.github/`, `docs/`, `requirements*.txt`, `tests/conftest.py`. Need a change? Write it into your plan under "Requests" and stop; the coordinator makes it in its own small PR, merged first, and you rebase.
+- Add module-local fixtures in your own `tests/<module>/conftest.py`.
+- Cross-module imports are forbidden except `contracts`, `config_models`, `redact` (enforced by `tests/test_import_boundaries.py`).
 
 ## 13. Flagged concerns and assumptions (owner input welcome)
 

@@ -1,6 +1,6 @@
 # metrics/ module
 
-Owns: the `config.yaml` schema (pydantic v2, `extra=forbid`), config loading/validation (spec R19-R21), the `check_config` command, and prometheus objects. Imports nothing from other modules.
+Plan: `specs/plans/metrics.md`. Owns all metrics including derived and meta ones (`record_success`, `record_error`, `render`); the `check_config` command is NOT here (task 4, spec R20). Owns: the `config.yaml` schema (pydantic v2, `extra=forbid`), config loading/validation (spec R19-R21), the `check_config` command, and prometheus objects. Imports nothing from other modules.
 
 - `Registry.build(config)` creates metrics from YAML (`yaml.safe_load` only, validated schema); `Registry.update(snapshot)` sets values. Use a private `CollectorRegistry`, not the global one.
 - Each YAML entry: source field, metric name, type, labels, unit. Reject names that break `homematic_<thing>_<unit>` or labels outside `room`, `device_type`, `device`.

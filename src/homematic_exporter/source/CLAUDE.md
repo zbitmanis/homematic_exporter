@@ -1,6 +1,6 @@
 # source/ module
 
-Owns: Homematic IP client. Nothing outside `source/` and `tests/source/`.
+Owns: Homematic IP client. Nothing outside `source/` and `tests/source/`. Plan: `specs/plans/source.md`. Provides `parse_snapshot(raw, now, extract, on_collision)` (spec 3, 4) and scrubs upstream bodies with `redact.scrub`; gets its `ExtractConfig` from the caller (shared fixture `default_extract` in tests).
 
 - Implement `Source.fetch() -> Snapshot` (async) from `contracts.py`. Read-only; never write to the heating system.
 - Cloud API first (access-point token); keep it behind the `Protocol` so a local CCU client can be added without touching other modules.

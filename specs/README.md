@@ -9,5 +9,5 @@ Prompt: "Document the spec fully as spec.md, ready to hand to the engineering te
 
 First Design task: a spike against a real access point to close the intent's open questions 1, 2, 3 and 5.
 
-## plan.md (one per task, committed after plan mode)
+## plans/<module>.md (one per task, committed after plan mode; the master `plan.md` holds status, review phases and the review log)
 Headings: Files that change · Order of work · Risks · Proof. Bar: an engineer who has never seen the conversation can implement from it alone.

@@ -7,13 +7,13 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - Install: `pip install -r requirements-dev.txt` (Python 3.12)
 - Test: `pytest -q` (expect all passed, no network)
 - Lint: `ruff check . && ruff format --check .` (expect no output / "already formatted")
-- Types: `mypy src` (expect "Success: no issues found")
+- Types: `mypy src tests` (expect "Success: no issues found")
 - Audit: `pip-audit -r requirements.txt` and `python scripts/check_licenses.py` (licence allowlist; expect `homematicip` listed as EXCEPTION)
 - E2E: `pytest -m e2e tests/e2e`
 - Run: `uvicorn homematic_exporter.app:create_app --factory --port 9100`
 
 ## Architecture
-- Modules under `src/homematic_exporter/`: `source`, `state`, `metrics`, `app`. Shared contracts: `contracts.py` and `config_models.py`.
+- Modules under `src/homematic_exporter/`: `source`, `state`, `metrics`, `app`. Shared contracts: `contracts.py`, `config_models.py`, `redact.py` (scrub). Modules never import each other (`tests/test_import_boundaries.py`).
 - Poll loop (asyncio background task) updates metrics; scrapes read cache only. Never call the source from a request handler.
 - Mapping is config: a mounted `config.yaml` (default `/etc/homematic-exporter/config/config.yaml`, bundled fallback) holds model names, raw field names, channel types, metric definitions and tuning; adding a metric or numeric field must not need Python changes. Joins, naming, battery history and derived metrics stay in code. Validate with `python -m homematic_exporter.check_config`. See `specs/spec.md` 5.1.
 - Config is env vars with defaults; no hardcoded URLs, ports, paths or intervals.
@@ -31,8 +31,8 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 
 ## Workflow
 - One agent = one module = one worktree (`claude --worktree <module>`). Edit only your module's paths.
-- Plan first; commit `specs/plan.md` before code. Update `plan.md` in the same commit if you deviate.
-- Changing `contracts.py` or a module interface requires a `specs/spec.md` change in that commit.
+- Plan first; commit your module plan `specs/plans/<module>.md` before code (the master `specs/plan.md` is the coordinator's). Update `plan.md` in the same commit if you deviate.
+- Changing `contracts.py`, `config_models.py` or `redact.py` (or a module interface) requires a `specs/spec.md` change in that commit, in its own small PR merged before dependent work. Phase-2 agents never edit them (spec 12.1).
 - Dependency changes require an SBOM update (`docs/sbom/`), a licence check against the allowlist, and human sign-off. Do not bump versions.
 - Licensing: repo is MIT; `homematicip` is GPL-3.0 (accepted exception). Never copy external code/agents/docs without a recorded licence and an entry in `THIRD_PARTY_NOTICES.md`. Do not edit `LICENSE` or `THIRD_PARTY_NOTICES.md` without owner approval. See the intent's Licensing section.
 - Bug fix = failing test first, committed before the fix.

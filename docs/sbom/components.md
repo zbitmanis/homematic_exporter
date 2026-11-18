@@ -8,11 +8,11 @@ Package root: `src/homematic_exporter/`. One agent owns one module per worktree.
 
 | Module | Path | Owns | Public interface | Depends on | Proof |
 |---|---|---|---|---|---|
-| contracts | `contracts.py`, `config_models.py` | `Snapshot` and entity types, `Source`/`StateStore` protocols, `ExtractConfig`/`Tuning` config models | the types themselves | pydantic (config models only) | mypy, `tests/test_contracts.py`, `tests/test_config_models.py`; changes need a spec change |
-| source | `source/` | Homematic IP client (cloud first, CCU later) | implements `Source.fetch() -> Snapshot` (async) | contracts (token via env) | `tests/source/` fixtures, no network |
-| state | `state/` | Battery history on the volume | implements `StateStore`; enforces 0700/0600 | contracts | `tests/state/` tmp_path tests incl. permissions |
-| metrics | `metrics/` | `config.yaml` schema/validation, metric definitions -> prometheus objects | `load_config`, `Registry.build`, `Registry.update(snapshot, batteries)`, `check_config` | contracts | golden default config + mini fixture -> exposition text |
-| app | `app/` | FastAPI, poll loop, meta-metrics, env config | `create_app() -> FastAPI`; `/metrics /health /status` | contracts (protocols only) | fake Source, loop-error survival, clean shutdown |
+| contracts | `contracts.py`, `config_models.py`, `redact.py` | `Snapshot` and entity types, `Source`/`StateStore` protocols, `NameCollisionError`, `ExtractConfig`/`Tuning` config models, `scrub` | the types and `scrub` themselves | pydantic (config models only) | mypy, `tests/test_contracts.py`, `test_config_models.py`, `test_redact.py`, `test_import_boundaries.py`; changes need a spec change and their own PR |
+| source | `source/` | Homematic IP client (cloud first, CCU later), `parse_snapshot` | implements `Source.fetch() -> Snapshot` (async); `parse_snapshot(raw, now, extract, on_collision)` | contracts (token via env) | `tests/source/` fixtures, no network |
+| state | `state/` | Battery history on the volume | `FileStateStore` implements `StateStore` (0700/0600); `BatteryHistory(store, tuning).update(devices, now)` | contracts | `tests/state/` tmp_path tests incl. permissions |
+| metrics | `metrics/` | `config.yaml` schema/validation, metric definitions -> prometheus objects | `load_config`, `Registry.build/update/record_success/record_error/exposition`, `render(config, snapshot, batteries)` | contracts | golden exposition from a hand-built `Snapshot` (the fixture-through-parser golden test is task 4) |
+| app | `app/` | FastAPI, poll loop, env config, logging filter | `create_app(*, settings=None, config=None, source=None, store=None) -> FastAPI` (env defaults); `/metrics /health /status` | contracts; concrete implementations only in `app/wiring.py` | fake Source, loop-error survival, clean shutdown |
 
 Dependency direction: `app` wires concrete `source`, `state`, `metrics` and depends only on `contracts` types. Other modules never import each other's concrete classes.
 
@@ -35,6 +35,7 @@ Resolved and pinned 2026-11-18 in `requirements.txt` / `requirements-dev.txt` (r
 | fastapi | 0.165.0 | web app | app | MIT | pulls starlette, pydantic |
 | uvicorn | 0.54.0 | ASGI server | app | BSD-3 | single `CMD` |
 | prometheus_client | 0.26.0 | metric objects, exposition | metrics, app | Apache-2.0 / BSD-2 | |
+| pydantic | see `requirements.txt` | config models and validation (imported directly by `config_models.py`) | contracts, metrics | MIT | direct import; pinned transitively via fastapi |
 | PyYAML | 6.0.3 | metric config | metrics | MIT | `safe_load` only |
 | homematicip | 2.23.1 | HmIP cloud API client | source | **GPL-3.0-or-later** | spike: `docs/spikes/homematicip-spike.md`; needs Python >=3.12; pulls aiohttp, httpx2, opentelemetry-api |
 | httpx, pytest, pytest-asyncio | 0.28.1 / 9.2.0 / 1.5.0 | tests | all | BSD / MIT | dev only |
