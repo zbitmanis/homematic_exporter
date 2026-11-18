@@ -344,7 +344,7 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 ## 13. Flagged concerns and assumptions (owner input welcome)
 
 - **C1. Name collision at runtime (decided by owner: suffix and warn).** Fatal at startup; on later polls suffix `-2`, `-3` ordered by SGTIN, log a warning, keep serving data. Trade-off accepted: a device label can change when devices are added or removed in a room.
-- **C2. Group vs device temperatures.** Room temperature/humidity come from the HEATING group value (Homematic IP's own aggregate). Per-sensor temperatures are not exported in v1 (cardinality, no need yet).
+- **C2. Group vs device temperatures (decided by owner: room aggregate only).** Room temperature and humidity come from the HEATING group value, one series per room. Per-sensor temperatures are not exported in v1; revisit if a sensor drifts.
 - **C3. `low_since` on first sight is approximate.** The API gives no timestamp for when `lowBat` began; the exporter records when it first saw it. Same for the one device currently low (jekabs display sensor).
 - **C4. Stale `lowBat` on unreachable devices.** The cloud reports last-known values; a dead accumulator can show `unreach` before or without `lowBat`. R13 freezes history while unreachable. Three devices are unreachable right now in the capture (a radiator thermostat, the `girts` display sensor, the circulation-pump switch): alerts will fire on day one.
 - **C5. Floor valve naming.** Floor channels are named `<room> floor-valve` (not individually addressable devices); two channels in one room would collide: handled by C1.
