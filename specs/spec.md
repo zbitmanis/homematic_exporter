@@ -48,6 +48,9 @@ A single-replica Python service. A background task downloads the Homematic IP co
 - R20. `python -m homematic_exporter.check_config [--config PATH] [--fixture PATH]` validates a config and, with a fixture, prints the series it would produce. CI runs it against the shipped default config and the mini fixture and compares golden exposition text.
 - R21. Config location: `CONFIG_FILE` if set (must exist, else fail); otherwise `/etc/homematic-exporter/config/config.yaml` if present (the pod/volume mount); otherwise the default bundled in the image (`/app/default-config.yaml`). The chosen source is logged at INFO. The mount is read-only; the exporter never writes to it. Changes take effect on restart.
 
+**Config generator**
+- R22. `python -m homematic_exporter.generate_config --state STATE.json [--existing CONFIG] --out CONFIG` writes a draft `config.yaml` from a Homematic IP state JSON (intent "Config generator"): `device_models` for every observed model, valve/contact rules for observed channel types, metric entries for observed fields per scope, and comments for unmapped fields. Deterministic; output contains no SGTIN, id, token, PIN, room or device name; the output passes `check_config` against the same input.
+
 **Security and ops**
 - R15. `HMIP_AUTH_TOKEN` and `HMIP_ACCESS_POINT` come from the environment only; they never appear in logs, metrics, `/status`, exceptions or the image.
 - R16. Debug routes are off unless `DEBUG_ROUTES=true`.
@@ -334,6 +337,7 @@ Per device name, persisted as JSON under key `battery`:
 1. `contracts.py` (human-reviewed first).
 2. In parallel: `source` (parser + file + cloud), `state` (store + battery history), `metrics` (config schema + registry + `check_config` + `config/default-config.yaml`).
 3. `app` against fakes; then e2e, Dockerfile update, Quadlet unit, alert rules.
+4. `generate_config` (tool module, not part of the runtime path; may import `source` and `metrics`), after the config schema exists.
 
 Each module starts with its own `specs/plan.md` entry (files, order, risks, proof).
 
@@ -348,9 +352,9 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 - **C7. Library behaviour.** `download_configuration_async` and the `init_async` signature were read from `homematicip` 2.23.1 source; the websocket and library object model are unused. The pinned version plus the fixture protect against API drift.
 - **C8. Rate limiting.** The library's own rate limiter stays on; 30 s polling downloads about 130 KB each time (about 15 MB/hour). Acceptable; raise the interval if the cloud throttles.
 - **C9. RSSI unit.** `dBm` is not an SI base unit but is the conventional Prometheus choice for radio level.
-- **C11. Config typo risk.** A wrong raw field name in `config.yaml` yields `None` and therefore a missing series, not an error. Mitigations: golden test on the default config, `check_config --fixture` listing series per metric, and a startup log line with the series count; a metric that produces zero series for two consecutive polls logs a warning.
-- **C12. Reload.** Restart to apply config changes (v1). A SIGHUP reload is possible later; not needed for a 30 s-poll hobby exporter.
-- **C13. Config file vs env.** Access point and token stay in env/secrets, not in `config.yaml` (unlike the installation id in the Viessmann config), so the mounted file can be shared or committed.
+- **C11. Config typo risk (accepted by owner).** A wrong raw field name in `config.yaml` yields `None` and therefore a missing series, not an error. Mitigations: golden test on the default config, `check_config --fixture` listing series per metric, and a startup log line with the series count; a metric that produces zero series for two consecutive polls logs a warning.
+- **C12. Reload (accepted by owner).** Restart to apply config changes (v1). A SIGHUP reload is possible later; not needed for a 30 s-poll hobby exporter.
+- **C13. Config file vs env (accepted by owner).** Access point and token stay in env/secrets, never in `config.yaml` (unlike the installation id in the Viessmann config). Consequence the owner wants: the config file contains no secrets or identifying data, so it may be stored in git (this repo or a private config repo). The generator (R22) and `check_config` must keep it that way.
 - **C10. Not yet verified live:** nothing here has run against the real API except the one-off state download that produced the fixture.
 
 ## 14. Traceability
@@ -363,5 +367,6 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 | Q4 token via secret | R15, section 5 |
 | Q5 boiler state | 6.5 |
 | Q7 device naming | section 4, C1 |
+| Config generator script | R22 |
 | Config-driven mapping (mounted file, no hardcoded values) | section 5.1, 6.1, R6, R19-R21, C11-C13 |
 | CI/CD, image, licensing | section 11, `docs/ci/README.md`, `THIRD_PARTY_NOTICES.md` |

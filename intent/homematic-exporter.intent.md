@@ -39,6 +39,20 @@ Newly added Homematic IP set:
 
 Alert examples: any device low-battery > 0 → "prepare charged set"; device unreachable > 15 min.
 
+## Config generator (added 2026-11-18)
+
+Mapping is configuration, not code (see `specs/spec.md` 5.1). To avoid hand-writing it, and to cope with new Homematic IP devices, the project includes a **script that generates a draft `config.yaml` from the state the API returns** (the JSON that `scripts/fixture/dump_state.py` writes as `state.scrubbed.json`, or a fresh download).
+
+Requirements:
+1. **Input:** a Homematic IP state JSON file (offline; no credentials needed). Optionally the existing config, to show what is new.
+2. **Output:** a draft `config.yaml` with `extract.device_models` for every observed `modelType` (suggested short names), `extract.valves`/`contacts` rules for observed channel types, and `metrics` for the fields found per scope; plus comments listing fields that exist in the data but were not mapped, so new numeric fields can be added as `extras` quickly.
+3. **Deterministic and reviewable:** same input gives the same output; every generated entry is marked as a suggestion; the owner reviews and edits before use.
+4. **Safe to commit:** the output contains no SGTINs, serials, ids, tokens, PINs, room names or device names, only model types, channel types and raw field names, so a config file may live in git.
+5. **Self-checking:** the output passes `check_config` (spec R20) against the same input.
+
+Non-goals: applying the config automatically, calling the API itself (the capture tool does that), guessing semantics beyond field names and types.
+Anti-goal: a generator whose output leaks identifying data from the input.
+
 ## Affected users and systems
 
 - Home operator (andris): Grafana dashboards and alerts.
