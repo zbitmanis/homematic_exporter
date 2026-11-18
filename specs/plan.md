@@ -8,7 +8,7 @@ Master plan: task list with the **closing review task** every plan ends with and
 |---|---|---|---|---|---|
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
 | 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
-| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater` (docs check), security re-check of `redact.py` | `fix/1b-closing-review` | done (gate green: 225 tests) | all steps done, findings fixed or accepted (rows 59-75), final security re-check clean | planned, **before phase 2** |
+| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater` (docs check), security re-check of `redact.py` | `fix/1b-closing-review` | done (gate green: 232 tests) | all steps done, findings fixed or accepted (rows 59-75), final security re-check clean | planned, **before phase 2** |
 | 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | done | closing review plus re-check done; all findings fixed or accepted (rows 38-58) | merged (`c49544a`) |
 | 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
@@ -82,7 +82,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 | 4 tools + deploy | - | - | - | - | - | - | - | - | - | - |
 | 5 generate_config | - | - | - | - | C | - | n/a | - | - | - |
 
-Gaps in the closed tasks were real: task 1b was merged without `python-reviewer`, `code-reviewer`, `code-simplifier` and `doc-updater`, and without a re-check of the `redact.py` fixes. Task `1b-close` closed all of them except the simplifier step (rows 59-71).
+Gaps in the closed tasks were real: task 1b was merged without `python-reviewer`, `code-reviewer`, `code-simplifier` and `doc-updater`, and without a re-check of the `redact.py` fixes. Task `1b-close` closed all of them, including the simplifier step and a final security re-check (rows 59-75).
 
 ### D. Review log
 
