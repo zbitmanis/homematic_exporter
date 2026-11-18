@@ -1,0 +1,103 @@
+# Release on merge to main: semantic-release -> multi-arch image on Docker Hub.
+# Local copy for now; to be extracted into zbitmanis/ci-workflows as a reusable workflow (follow-up task, docs/ci/README.md).
+name: release
+"on":
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: semantic-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # publish the GitHub release and tag
+      issues: write          # comment on released issues
+      pull-requests: write   # comment on released pull requests
+    outputs:
+      version: ${{ steps.export_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6   # TODO pin by SHA (pinact/Renovate)
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6 # TODO pin by SHA
+        with:
+          node-version: lts/*
+      - name: Default release config (only if the project has no package.json)
+        env:
+          SR_VERSION: 25.0.1
+        run: |
+          if [ ! -f package.json ]; then
+            cat > package.json <<JSON
+          {
+            "name": "release", "private": true,
+            "devDependencies": {
+              "semantic-release": "${SR_VERSION}",
+              "@semantic-release/exec": "^7.0.0",
+              "@semantic-release/commit-analyzer": "^13.0.0",
+              "@semantic-release/release-notes-generator": "^14.0.0",
+              "@semantic-release/github": "^11.0.0"
+            },
+            "release": {
+              "branches": ["main", "master", "next", "beta", "alpha"],
+              "npmPublish": false,
+              "plugins": [
+                "@semantic-release/commit-analyzer",
+                "@semantic-release/release-notes-generator",
+                "@semantic-release/github",
+                ["@semantic-release/exec", { "successCmd": "echo v\${nextRelease.version} > .VERSION" }]
+              ]
+            }
+          }
+          JSON
+          fi
+      - run: npm install --no-package-lock
+      - run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Export version
+        id: export_version
+        run: |
+          if [ -f .VERSION ]; then v="$(cat .VERSION)"; echo "version=${v#v}" >> "$GITHUB_OUTPUT"
+          else echo "No release produced"; echo "version=" >> "$GITHUB_OUTPUT"; fi
+
+  build:
+    name: build and push image
+    needs: release
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6   # TODO pin by SHA
+      - uses: docker/setup-qemu-action@v3      # TODO pin by SHA; replace by native arm runner when Q10 allows
+      - uses: docker/setup-buildx-action@v3    # TODO pin by SHA
+      - uses: docker/login-action@v3           # TODO pin by SHA
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Compute tags
+        id: tags
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          REPO: ${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REGISTRY }}
+        run: |
+          tags="${REPO}:${VERSION}"
+          if [[ "$VERSION" != *-* ]]; then   # stable releases only
+            tags+=$'\n'"${REPO}:${VERSION%.*}"
+            tags+=$'\n'"${REPO}:latest"
+          fi
+          { echo "tags<<EOF"; echo "$tags"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6      # TODO pin by SHA
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          sbom: true
+          provenance: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
