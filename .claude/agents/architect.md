@@ -61,13 +61,13 @@ For significant decisions, write a short ADR (store under `docs/adr/`):
 Heating values change slowly; Prometheus scrapes every 15-60 s; the cloud API is rate limited.
 
 ## Decision
-Periodic poll every 30 s (`POLL_INTERVAL_SECONDS`).
+Periodic poll every 60 s (`POLL_INTERVAL_SECONDS`).
 
 ## Consequences
 ### Positive
 - Simple, stateless between polls, easy to test with fixtures
 ### Negative
-- Up to 30 s of latency; whole configuration downloaded each poll
+- Up to 60 s of latency; whole configuration downloaded each poll
 ### Alternatives Considered
 - Websocket events: lower latency, more reconnect and state-merge logic
 

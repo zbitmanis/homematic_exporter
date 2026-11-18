@@ -24,7 +24,7 @@ A single-replica Python service. A background task downloads the Homematic IP co
 ## 2. Requirements (numbered, testable)
 
 **Polling and resilience**
-- R1. The poll task runs every `POLL_INTERVAL_SECONDS` (default 30) and updates metrics from one `Snapshot`. `/metrics` never calls the source (test: fake source call count stays flat across scrapes).
+- R1. The poll task runs every `POLL_INTERVAL_SECONDS` (default 60) and updates metrics from one `Snapshot`. `/metrics` never calls the source (test: fake source call count stays flat across scrapes).
 - R2. A failed poll (any exception except `CancelledError`) is caught, logged with the upstream error body (scrubbed of credentials), counted in `homematic_poll_errors_total`, and the loop continues. Last good values stay exported.
 - R3. `homematic_last_successful_poll_timestamp_seconds` advances only on success. `homematic_data_age_seconds` is computed at scrape time (`Gauge.set_function`) as now minus that timestamp; before the first success it is not exported.
 - R4. Each upstream call has an explicit timeout (`HTTP_TIMEOUT_SECONDS`, default 10). A poll that exceeds the interval does not overlap the next one (single task, sequential).
@@ -155,7 +155,7 @@ The **structure** below is code; every raw name, channel type and label shown is
 | `HMIP_AUTH_TOKEN` | required for `cloud` | Podman secret / env; never logged |
 | `SOURCE_KIND` | `cloud` | `cloud` or `file` |
 | `SOURCE_FILE` | none | JSON path when `SOURCE_KIND=file` |
-| `POLL_INTERVAL_SECONDS` | `30` | |
+| `POLL_INTERVAL_SECONDS` | `60` | decided in C8 |
 | `HTTP_TIMEOUT_SECONDS` | `10` | per upstream call |
 | `STATE_DIR` | `/state` | battery history |
 | `CONFIG_FILE` | unset | see R21: explicit path (must exist), else `/etc/homematic-exporter/config/config.yaml`, else the bundled default |
@@ -350,10 +350,10 @@ Each module starts with its own `specs/plan.md` entry (files, order, risks, proo
 - **C5. Floor valve naming.** Floor channels are named `<room> floor-valve` (not individually addressable devices); two channels in one room would collide: handled by C1.
 - **C6. `FileSource` ships in the production image (decided by owner: include).** Read-only, off unless `SOURCE_KIND=file`; the container smoke test, demos and credential-free trials run the real image against a fixture file.
 - **C7. Library behaviour.** `download_configuration_async` and the `init_async` signature were read from `homematicip` 2.23.1 source; the websocket and library object model are unused. The pinned version plus the fixture protect against API drift.
-- **C8. Rate limiting.** The library's own rate limiter stays on; 30 s polling downloads about 130 KB each time (about 15 MB/hour). Acceptable; raise the interval if the cloud throttles.
+- **C8. Rate limiting.** The library's own rate limiter stays on; 60 s polling (decided by owner) downloads about 130 KB each time (about 8 MB/hour). Acceptable; raise the interval if the cloud throttles.
 - **C9. RSSI unit.** `dBm` is not an SI base unit but is the conventional Prometheus choice for radio level.
 - **C11. Config typo risk (accepted by owner).** A wrong raw field name in `config.yaml` yields `None` and therefore a missing series, not an error. Mitigations: golden test on the default config, `check_config --fixture` listing series per metric, and a startup log line with the series count; a metric that produces zero series for two consecutive polls logs a warning.
-- **C12. Reload (accepted by owner).** Restart to apply config changes (v1). A SIGHUP reload is possible later; not needed for a 30 s-poll hobby exporter.
+- **C12. Reload (accepted by owner).** Restart to apply config changes (v1). A SIGHUP reload is possible later; not needed for a 60 s-poll hobby exporter.
 - **C13. Config file vs env (accepted by owner).** Access point and token stay in env/secrets, never in `config.yaml` (unlike the installation id in the Viessmann config). Consequence the owner wants: the config file contains no secrets or identifying data, so it may be stored in git (this repo or a private config repo). The generator (R22) and `check_config` must keep it that way.
 - **C10. Not yet verified live:** nothing here has run against the real API except the one-off state download that produced the fixture.
 
