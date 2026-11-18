@@ -2,7 +2,7 @@
 
 ## Agent roster (`.claude/agents/`)
 
-Imported from everything-claude-code and rewritten for Python (no npm/Node/React/browser content remains); Sonnet is the ceiling. Rules in `.claude/rules/common` and `.claude/rules/python`; skills `python-patterns`, `python-testing`, `fastapi-patterns` in `.claude/skills/`.
+Imported from everything-claude-code (MIT; attribution and licence in `THIRD_PARTY_NOTICES.md`) and rewritten for Python (no npm/Node/React/browser content remains); Sonnet is the ceiling. Rules in `.claude/rules/common` and `.claude/rules/python`; skills `python-patterns`, `python-testing`, `fastapi-patterns` in `.claude/skills/`.
 
 | Agent | Model | Role in this project | Stage |
 |---|---|---|---|
