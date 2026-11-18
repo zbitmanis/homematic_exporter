@@ -33,7 +33,8 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - One agent = one module = one worktree (`claude --worktree <module>`). Edit only your module's paths.
 - Plan first; commit `specs/plan.md` before code. Update `plan.md` in the same commit if you deviate.
 - Changing `contracts.py` or a module interface requires a `specs/spec.md` change in that commit.
-- Dependency changes require an SBOM update (`docs/sbom/`) and human sign-off. Do not bump versions.
+- Dependency changes require an SBOM update (`docs/sbom/`), a licence check against the allowlist, and human sign-off. Do not bump versions.
+- Licensing: repo is MIT; `homematicip` is GPL-3.0 (accepted exception). Never copy external code/agents/docs without a recorded licence and an entry in `THIRD_PARTY_NOTICES.md`. Do not edit `LICENSE` or `THIRD_PARTY_NOTICES.md` without owner approval. See the intent's Licensing section.
 - Bug fix = failing test first, committed before the fix.
 - Git: never commit on `main`; no Co-Authored-By footer. Branch as `feat/<name>` or `fix/<name>`; commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:` ...).
 - Agents: `python-reviewer` (+ `fastapi-reviewer` for `app/`) and `security-reviewer` on every change; `python-build-resolver` when the gate fails; see `docs/harness.md`.
@@ -49,4 +50,5 @@ Run tests, lint and types before reporting any task complete, and paste the outp
 - Assuming Homematic field names without the captured fixture (`tests/source/fixtures/state.scrubbed.json`, git-ignored, local only). Tests must use a small hand-written fixture derived from it, never the full dump.
 - Adding debug routes that are on by default.
 - Inspecting or resolving a package with an interpreter that differs from `.python-version` (host Python 3.9 once resolved homematicip 1.1.5 instead of 2.x); record Python and resolved version in the spike header.
+- Adding a dependency or pasting external code without checking its licence and updating the SBOM / `THIRD_PARTY_NOTICES.md`.
 - Flattening `.claude/rules/` when copying; keep `common/` and `python/` directories.

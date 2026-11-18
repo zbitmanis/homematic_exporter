@@ -60,7 +60,7 @@ Alert examples: any device low-battery > 0 → "prepare charged set"; device unr
 - Single replica. The poll loop is not safe to run twice.
 - Multi-stage slim image (non-root), one `CMD` starting uvicorn. `/health` for the orchestrator. Debug routes are off by default.
 - Log the upstream error body on poll failure, not only the status code.
-- Dependencies and licences are tracked in the SBOM (`docs/sbom/`).
+- Dependencies and licences are tracked in the SBOM (`docs/sbom/`); licensing rules are in the Licensing section below.
 
 ## CI/CD and image delivery (added 2026-11-18)
 
@@ -88,6 +88,27 @@ Fit with this project: the Conventional Commit and `feat|fix/` branch rules alre
 Gaps to close for this project (proposals, not yet agreed): no test/lint/audit gate before release; no pull-request workflow, so no PR tags (Q8); `-amd64`/`-arm64` tags point at the same multi-arch manifest and are misleading; Docker actions are tag-pinned, not SHA-pinned; QEMU arm64 builds are slow (Q10); no SBOM or provenance attestation; a dead `VERSION=$(cat .VERSION)` line in the release step. The `.releaserc` that writes `.VERSION` has not been read yet.
 
 Non-goals: Kubernetes manifests, multiple registries in v1.
+
+## Licensing (added 2026-11-18)
+
+Goal: never ship something we are not allowed to ship, and never be surprised by a licence at release time.
+
+Decisions in force:
+1. **This repository is MIT** (`LICENSE`, copyright holder `zbitmanis`).
+2. **`homematicip` is GPL-3.0-or-later** and is accepted. The Docker Hub repo is public, so the published image **is distributed**, and the combined image is under GPL terms for that component. MIT code may be combined with it; the image must carry the GPL notice and a source pointer.
+3. **Copied third-party material** (ECC agents, rules, skills under `.claude/`) is MIT-licensed and attributed in `THIRD_PARTY_NOTICES.md`. Anything else copied into the repo needs the same treatment before it is committed.
+4. **Dependency licence allowlist:** MIT, BSD, Apache-2.0, ISC, PSF, MPL-2.0. Anything else (GPL, LGPL, AGPL, SSPL, unknown, "non-commercial") needs a recorded owner decision in `docs/sbom/components.md`; `homematicip` is the one documented exception.
+
+Rules (enforced by review and CI, see `docs/sbom/components.md`):
+- **Before adding or bumping a dependency:** check its licence (PyPI metadata, `pip-licenses`) and record it in the SBOM in the same commit. Copyleft licences stop the change until the owner decides.
+- **Before copying code, prompts, agents or docs from elsewhere:** confirm the licence permits it, keep the notice, add it to `THIRD_PARTY_NOTICES.md`.
+- **Before any image publish path changes:** the image ships `LICENSE`, `THIRD_PARTY_NOTICES.md` and the GPL text, carries the OCI licence labels, and the Docker Hub description names the bundled GPL library with a source link (checklist in the SBOM doc).
+- **Fixtures and docs:** captured device data stays scrubbed and git-ignored; no third-party text pasted into docs without attribution.
+- **AI agents:** an agent must not add a dependency, copy external code, or change `LICENSE`/`THIRD_PARTY_NOTICES.md` without owner approval.
+
+Non-goals: dual licensing, a contributor licence agreement, legal review (revisit if the project is published widely or used commercially).
+
+Anti-goal: a release that includes a dependency or copied file with an unrecorded or incompatible licence.
 
 ## Non-goals
 
@@ -126,3 +147,4 @@ Non-goals: Kubernetes manifests, multiple registries in v1.
 
 
 **Update 2026-11-18 (CI/CD design):** the pipeline is designed as a **central reusable workflow pair**, built locally first (`release.yml`, `pr-image.yml`) shared across projects, with thin callers here. Design, drafts and risks: `docs/ci/README.md`. Proposed answers to Q8-Q10 live there (Docker Hub variable names as in the reference repo; QEMU for arm64 first, native arm later). Still need the owner's confirmation.
+11. **Licensing follow-ups:** confirm the copyright holder name in `LICENSE` (currently `zbitmanis`); add the SPDX `license` field to `pyproject.toml` when it exists; wire the licence allowlist check into CI (`pip-licenses --allow-only=... --ignore-packages homematicip`); implement the image distribution checklist in the Dockerfile and release workflow.
