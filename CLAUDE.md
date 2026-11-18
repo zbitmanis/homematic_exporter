@@ -31,6 +31,7 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 
 ## Workflow
 - One agent = one module = one worktree (`claude --worktree <module>`). Edit only your module's paths.
+- Start module work with `scripts/new_module_worktree.sh <module>` (worktree, `feat/<module>` branch, `.hmx-module` marker). The `ownership` CI check and the path-guard hook keep you inside your module (`.claude/ownership.yaml`).
 - Plan first; commit your module plan `specs/plans/<module>.md` before code (the master `specs/plan.md` is the coordinator's). Update your module plan in the same commit if you deviate.
 - Changing `contracts.py`, `config_models.py` or `redact.py` (or a module interface) requires a `specs/spec.md` change in that commit, in its own small PR merged before dependent work. Phase-2 agents never edit them (spec 12.1).
 - Dependency changes require an SBOM update (`docs/sbom/`), a licence check against the allowlist, and human sign-off. Do not bump versions.

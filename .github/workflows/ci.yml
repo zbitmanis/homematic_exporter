@@ -25,6 +25,23 @@ jobs:
       - if: hashFiles('tests/**/*.py') != ''
         run: pytest -q
 
+  ownership:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6   # TODO pin by SHA
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6   # TODO pin by SHA
+        with:
+          python-version-file: .python-version
+      - run: pip install "$(grep -i '^pyyaml==' requirements.txt)"
+      - name: Check module ownership (rules are read from the base branch)
+        env:   # branch names go through env, never into the script text
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: python scripts/check_ownership.py --base "origin/${BASE_REF}" --branch "${HEAD_REF}"
+
   build:
     needs: gate
     if: github.event.action != 'closed'

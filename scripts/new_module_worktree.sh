@@ -13,7 +13,7 @@ root="$(git rev-parse --show-toplevel)"
 dir="$(dirname "$root")/$(basename "$root")-$module"
 branch="feat/$module"
 git fetch origin main --quiet
-git worktree add "$dir" -b "$branch" origin/main
+git worktree add --no-track "$dir" -b "$branch" origin/main
 printf '%s\n' "$module" >"$dir/.hmx-module"
 cat <<MSG
 

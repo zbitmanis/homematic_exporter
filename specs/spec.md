@@ -371,6 +371,7 @@ Persistence and pruning:
 - Do **not** edit: `contracts.py`, `config_models.py`, `redact.py`, `specs/spec.md`, `pyproject.toml`, root `CLAUDE.md`, `Dockerfile`, `.github/`, `docs/`, `requirements*.txt`, `tests/conftest.py`, `tests/fixtures/`, `tests/test_*.py` (the shared ones). Need a change? Write it into your plan under "Requests" and stop; the coordinator makes it in its own small PR, merged first, and you rebase.
 - Add module-local fixtures in your own `tests/<module>/conftest.py`.
 - Cross-module imports are forbidden except `contracts`, `config_models`, `redact` (enforced by `tests/test_import_boundaries.py`).
+- **Enforcement:** `.claude/ownership.yaml` is the machine-readable form of these rules. The CI check `ownership` (`scripts/check_ownership.py`, rules read from the base branch) fails a PR from `feat/<module>` or `fix/<module>...` that changes files outside its module, or a contract change that omits `specs/spec.md` or mixes in module code; the path-guard hook (`.claude/hooks/path_guard.py`, module from the untracked `.hmx-module`) blocks module agents early and only warns the coordinator. Set up a module worktree with `scripts/new_module_worktree.sh <module>`. Make `ownership` a required status check in branch protection.
 
 ## 13. Flagged concerns and assumptions (owner input welcome)
 

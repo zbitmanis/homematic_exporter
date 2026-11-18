@@ -9,7 +9,7 @@ Master plan: task list with the **closing review task** every plan ends with and
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
 | 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
 | 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater`, security re-check of `redact.py` | `fix/1b-closing-review` | - | R2, R3, R4 (re-check), R6, R9 | planned, **before phase 2** |
-| 1c | ownership guardrails: path-guard hook, CI check tying contract changes to spec changes, CODEOWNERS | `feat/ownership-guard` | not started | R1-R5, R8, R9, R10 (section A matrix) | before or alongside phase 2 |
+| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper | `feat/ownership-guard` | built (gate green: 107 tests incl. 38 for the guard) | R1 done; R2-R5, R8, R9, R10 in progress | before phase 2 |
 | 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
 | 2c | `source` | `feat/source` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/source.md`) |
@@ -74,7 +74,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 contracts | pass (3.13) | approve (catch-up) | approve (catch-up) | approve (catch-up) | not ready, fixed in 1b | skipped | n/a | n/a | n/a | merged |
 | 1b readiness | pass (3.13) | **not run** | **not run** | done: 2 HIGH found and fixed; fixes **not re-checked** by the reviewer | done: ready with conditions, conditions closed | **not run** | n/a | n/a | by coordinator, **`doc-updater` not run** | merged (#5) |
-| 1c guardrails | - | - | - | - | - | n/a | n/a | - | - | - |
+| 1c guardrails | pass (3.13) | - | - | - | - | n/a | n/a | - | - | - |
 | 2a state | - | - | - | - | C | - | C | n/a | - | - |
 | 2b metrics | - | - | - | - | C | - | C | n/a | - | - |
 | 2c source | - | - | - | - | C | - | C | n/a | - | - |
