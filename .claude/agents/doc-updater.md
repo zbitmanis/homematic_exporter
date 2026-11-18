@@ -43,7 +43,7 @@ pip list --format=freeze                                         # compare with 
 ## Workflow
 
 ### 1. Analyze the repository
-Modules under `src/homematic_exporter/` (`source`, `state`, `metrics`, `app`, `contracts.py`), entry point (`create_app`), config env vars, mapping and metrics in `config/default-config.yaml`.
+Modules under `src/homematic_exporter/` (`source`, `state`, `metrics`, `app`, `contracts.py` (+ `config_models.py`, `redact.py`)), entry point (`create_app`), config env vars, mapping and metrics in `config/default-config.yaml`.
 
 ### 2. Update documentation
 1. **Extract** — public classes/functions, env vars (search for `os.environ`), routes, metric names from `config/default-config.yaml`

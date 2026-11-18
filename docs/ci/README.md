@@ -62,7 +62,7 @@ Image: `zbitmanis/homematic-exporter`. Repo variables `DOCKERHUB_USERNAME=zbitma
 - Reusable-workflow `permissions` can only narrow what the caller grants; the caller files grant `contents/issues/pull-requests: write` on the release job.
 - `semantic-release` default config assumes branch `main` and no existing `package.json` conflicts.
 - Docker Hub login endpoint and tag-delete API for the cleanup job are unverified against a real token.
-- The local workflows need a `Dockerfile` and application code to do anything useful: the image build fails until a `Dockerfile` exists (mypy and pytest steps are skipped while `src/`/`tests/` have no Python files). Add the Dockerfile before enabling branch protection on the `gate`/`build` checks.
+- The local workflows build the `Dockerfile` that now exists, but the image cannot run yet: `homematic_exporter.app:create_app` does not exist until task 3. The mypy and pytest steps run on `src` and `tests`.
 - Docker Hub repo is **public**, so pushed images (including `pr-*` tags) are world-readable; do not put anything sensitive in the image.
 
 ## Follow-up task: migrate to the central repo

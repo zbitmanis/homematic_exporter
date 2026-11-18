@@ -18,7 +18,7 @@ You are a senior Python code reviewer ensuring high standards of Pythonic code a
 
 When invoked:
 1. Run `git diff -- '*.py'` to see recent Python file changes
-2. Run the project gate: `ruff check .`, `ruff format --check .`, `mypy src` (pylint/bandit only if installed)
+2. Run the project gate: `ruff check .`, `ruff format --check .`, `mypy src tests` (pylint/bandit only if installed)
 3. Focus on modified `.py` files
 4. Begin review immediately
 
@@ -70,7 +70,7 @@ When invoked:
 ## Diagnostic Commands
 
 ```bash
-mypy src                                   # Type checking
+mypy src tests                                   # Type checking
 ruff check .                               # Linting
 ruff format --check .                      # Format check (ruff is the formatter of record)
 ruff check --select S src                  # Security rules (bandit set built into ruff)

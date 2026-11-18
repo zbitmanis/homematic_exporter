@@ -28,7 +28,7 @@ You are a harness-optimization specialist for this repository.
 
 ### Step 1: Understand (baseline)
 - Read `CLAUDE.md`, `docs/harness.md`, `REVIEW.md`, `.claude/settings.json`, hooks and agent definitions.
-- Run the project gate for a Code-Based baseline: `ruff check . && ruff format --check . && mypy src && pytest -q` (some parts may be skipped while code does not exist yet).
+- Run the project gate for a Code-Based baseline: `ruff check . && ruff format --check . && mypy src tests && pytest -q` (some parts may be skipped while code does not exist yet).
 - If present, run the eval suite: `for f in evals/*.json; do ./evals/check.sh "$f"; done` (the suite is planned in `docs/harness.md`; if absent, propose creating it rather than inventing results).
 - Define an `EVAL DEFINITION: harness-optimization` covering **Capability Evals** (leverage areas: hooks, evals, routing, context, safety) and **Regression Evals** (existing hooks, tests and gates that must keep passing).
 

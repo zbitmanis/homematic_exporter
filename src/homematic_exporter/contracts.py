@@ -3,8 +3,10 @@
 This file, `config_models.py` and `redact.py` are the only things modules may share. Changing any
 of them requires a `specs/spec.md` change in the same commit, in its own small PR merged first.
 
-Note: the dataclasses are frozen but hold a mapping in `extras`, so they are not hashable; do not
-put them in sets or use them as dict keys (key by name instead).
+Notes: the dataclasses are frozen but hold a mapping in `extras`, so they are not hashable; do not
+put them in sets or use them as dict keys (key by name instead). The `Source` and `StateStore`
+Protocols are `runtime_checkable`, but `isinstance` only checks that the method names exist, not
+their signatures: rely on mypy for signature conformance.
 """
 
 from collections.abc import Mapping, Sequence

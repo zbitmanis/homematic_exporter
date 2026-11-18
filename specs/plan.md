@@ -8,8 +8,8 @@ Master plan: task list with the **closing review task** every plan ends with and
 |---|---|---|---|---|---|
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
 | 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
-| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater`, security re-check of `redact.py` | `fix/1b-closing-review` | - | R2, R3, R4 (re-check), R6, R9 | planned, **before phase 2** |
-| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | built (gate green: 149 tests, 80 for the guard) | closing review plus re-check done; all findings fixed or accepted (rows 38-58) | before phase 2 |
+| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater` (docs check), security re-check of `redact.py` | `fix/1b-closing-review` | done (gate green: 232 tests) | all steps done, findings fixed or accepted (rows 59-75), final security re-check clean | planned, **before phase 2** |
+| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | done | closing review plus re-check done; all findings fixed or accepted (rows 38-58) | merged (`c49544a`) |
 | 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
 | 2c | `source` | `feat/source` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/source.md`) |
@@ -73,7 +73,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 | Task | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 contracts | pass (3.13) | approve (catch-up) | approve (catch-up) | approve (catch-up) | not ready, fixed in 1b | skipped | n/a | n/a | n/a | merged |
-| 1b readiness | pass (3.13) | **not run** | **not run** | done: 2 HIGH found and fixed; fixes **not re-checked** by the reviewer | done: ready with conditions, conditions closed | **not run** | n/a | n/a | by coordinator, **`doc-updater` not run** | merged (#5) |
+| 1b readiness | pass (3.13) | warning, fixed (1b-close) | approve, doc fixes (1b-close) | 2 HIGH fixed and confirmed; 1 new HIGH found and fixed (1b-close) | done: ready with conditions, conditions closed | done: 1 test move (1b-close) | n/a | n/a | docs check done, fixed (1b-close) | merged (#5) |
 | 1c guardrails | pass (3.13) | BLOCK then re-check: all fixed | WARNING, fixed | 5 bypasses then re-check: all fixed, 1 accepted design gap | ready with conditions, fixed | n/a | n/a | done by hand (hook + 6 CI scenarios) | checked, fixed | pending |
 | 2a state | - | - | - | - | C | - | C | n/a | - | - |
 | 2b metrics | - | - | - | - | C | - | C | n/a | - | - |
@@ -82,7 +82,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 | 4 tools + deploy | - | - | - | - | - | - | - | - | - | - |
 | 5 generate_config | - | - | - | - | C | - | n/a | - | - | - |
 
-Gaps in the closed tasks are real: task 1b was merged without `python-reviewer`, `code-reviewer`, `code-simplifier` and `doc-updater`, and without a re-check of the `redact.py` fixes. Task `1b-close` (below) tracks them.
+Gaps in the closed tasks were real: task 1b was merged without `python-reviewer`, `code-reviewer`, `code-simplifier` and `doc-updater`, and without a re-check of the `redact.py` fixes. Task `1b-close` closed all of them, including the simplifier step and a final security re-check (rows 59-75).
 
 ### D. Review log
 
@@ -148,6 +148,23 @@ _Catch-up review of task 1 (merged `824c8b6`), 2026-11-19, run read-only by `pyt
 | 56 | security (re-check) | MEDIUM | The hook's temp-dir allowance let a module agent write into a sibling worktree that lives under /tmp (also via a symlink) | fixed: temp paths inside any checkout (marker or ownership file above them) are not allowed; tests incl. symlink |
 | 57 | security (re-check) | MEDIUM/LOW | A misspelled or quoted key in `ownership.yaml` (`module:`, `contract_file:`, `"config/default-config.yaml":`) silently dropped rules | fixed: `validate_config` rejects unknown top-level keys, an empty `modules` and malformed `editable_sections`; quoted keys already rejected by the parser |
 | 58 | security (re-check) | residual design gap | Module identity comes from the branch name the author picks: a module agent that names its branch `feat/foo` is a coordinator branch to CI; only the hook (marker file) and convention stop it. A PR that edits `ci.yml` itself is protected only by a required status check named `ownership` plus review of `.github/**` | **accepted by design** for a solo repo (owner review is the backstop); turn on the required check in branch protection |
+| 59 | security (1b-close) | HIGH | `redact.scrub` missed camelCase compound keys: `clientAuthToken` (a real Homematic field), `userPassword`, `password_hash`, `secret_key` | fixed: keys are scanned linearly and judged in code (credential word anywhere in the normalized key); tests |
+| 60 | security (1b-close) | MEDIUM | URL-encoded keys and separators (`auth%5Ftoken%3Dabc`) not scrubbed | fixed: percent-encoded bytes allowed in keys, `%3D` as separator |
+| 61 | security (1b-close) | MEDIUM | `Cookie:`/`Set-Cookie:` header lines and `Authorization: Digest ...` parameters only partly redacted | fixed: whole header line redacted for unquoted values |
+| 62 | security (1b-close) | MEDIUM | `secrets=` matched only the exact raw string (not URL-encoded, form-encoded, base64 or other case) | fixed: variants of each secret, case-insensitive |
+| 63 | security (1b-close) | LOW | `PIN 123456` / `PIN is 123456` in prose | fixed: bare PIN digits rule |
+| 64 | python (1b-close) | MEDIUM | Unterminated quoted value (`token = "abc...` in a truncated body) leaked | fixed: unterminated quote redacted to the end of the line |
+| 65 | python (1b-close) | MEDIUM | Unquoted multi-word values only partly redacted | accepted as a documented limit (a value ends at whitespace; quote values with spaces); pinned by a test and stated in the module docstring |
+| 66 | python (1b-close) | LOW | Frozen config models still hold mutable dicts; `runtime_checkable` checks names only; weak tests (longest-first, idempotence, timing) | fixed: docstring notes; exact-output and corpus tests; timing test covers eight pathological shapes |
+| 67 | own test (1b-close) | HIGH (found during the fix) | First version of the compound-key regex was quadratic (a 100 KB `tokentoken...` took 73 s) | fixed: linear scan with the credential decision in code; all pathological inputs under 0.1 s |
+| 68 | code (1b-close) | MEDIUM | Stale text: protocol block in spec 3 and `source/CLAUDE.md`, `components.md` still showed `fetch()` without `on_collision`; fixture path `tests/source/fixtures/`; no plumbing for `APP_VERSION` | fixed: `fetch(on_collision)` everywhere; shared fixtures named; `Registry.build/render(..., version)`, `app` reads `APP_VERSION` |
+| 69 | code (1b-close) | LOW | `app/CLAUDE.md` said "contract protocols" (should be local `app/ports.py`); spec diagram showed `parse_snapshot(raw)` | fixed |
+| 70 | docs check (1b-close) | MEDIUM | `mypy src` in six agent files; contract lists naming only `contracts.py`; `harness.md` env names, `cosign`, `go.mod`, Makefile, deploy paths; `state/CLAUDE.md` "imports nothing"; `components.md` pydantic and package counts; `docs/ci/README.md` caveat; `CLAUDE.md` run/e2e commands for code that does not exist yet | fixed or marked planned |
+| 71 | security (1b-close) | accepted limits | Not caught by design: keyword with no separator (`Token abc123`), plural keys with list values, bare JWT/base64/hex without key or `Bearer`; `dashed ACCESSPOINT-ID` forms; over-redaction is accepted | documented in the module docstring; the `secrets=` argument covers known secrets in raw, URL-encoded, form-encoded and base64 form (owner to confirm) |
+| 72 | security (final re-check) | - | All earlier findings (rows 59-63) re-run: FIXED; no regressions in the scan (credential after a non-credential pair, quoted string containing `token=...`, status and message words survive) | confirmed |
+| 73 | security (final re-check) | MEDIUM | Key names not treated as credentials: `private_key`, `access_key`, `sessionid`, `passphrase`, `credential`; a key with a space (`api key=abc`) and bare `key=` | fixed for the named keys; `api key` and bare `key` accepted as limits (documented and pinned by a test) |
+| 74 | security (final re-check) | LOW | Over-redaction of keys containing a credential word as a substring (`tokenizer`, `secretary`, `cookie_policy`, `passwordless`) | accepted (documented, pinned) |
+| 75 | security (final re-check) | MEDIUM | `secrets=` cost grows with the number of secrets (2000 secrets on 1 MB took 80 s; 3 secrets 0.4 s); the linear scan itself is fast (1 MB under 1 s even for 500k `a=` pairs) | accepted for the intended use (2-3 secrets, log-sized text); documented; a test pins 3 secrets on 1 MB under 2 s |
 
 Clean results worth keeping: capture file not tracked and not in the image; no secrets, SGTINs or tokens in git history; workflows use `pull_request` (no secrets for forks) and no untrusted text in `run:`; contracts and config models match spec sections 3 and 5.1 field for field; the fixture mirrors the real structure.
 
@@ -188,7 +205,7 @@ Clean results worth keeping: capture file not tracked and not in the image; no s
 - Pins were resolved on Python 3.13; this gate ran on 3.13, CI runs 3.12.
 
 ## Proof
-`ruff check .`, `ruff format --check .`, `mypy src` (strict), `pytest -q` (21 tests), `python scripts/check_licenses.py`: all pass locally (Python 3.13 venv). CI gate on the PR runs the same on 3.12.
+`ruff check .`, `ruff format --check .`, `mypy src` (strict; historical: task 1 gate, now `mypy src tests`), `pytest -q` (21 tests then), `python scripts/check_licenses.py`: all pass locally (Python 3.13 venv). CI gate on the PR runs the same on 3.12.
 
 ## Next tasks (separate plan entries, can start in parallel after this merges)
 - Tasks 2a `state`, 2b `metrics`, 2c `source` (per-module plans in `specs/plans/`); then 3 `app` + e2e; then 4 tools and deployment; then 5 `generate_config`.

@@ -2,6 +2,8 @@
 
 See spec 5.1. Shared contract like `contracts.py`: `source` and `state` consume these types,
 `metrics` owns loading and the metric-definition schema. Unknown keys are rejected (spec R19).
+The models are frozen (no attribute assignment), but the dicts and lists they hold are ordinary
+mutable containers: treat them as read-only.
 """
 
 from typing import Literal
