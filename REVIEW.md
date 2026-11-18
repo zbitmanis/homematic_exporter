@@ -14,3 +14,6 @@ Python changes go through `python-reviewer` (`fastapi-reviewer` for `app/`), the
 
 ## Skip
 Generated files, `docs/sbom/sbom.cdx.json`, recorded test fixtures.
+
+## Where the review phases are tracked
+`specs/plan.md` defines the per-task pipeline (R1-R6), the phase-level reviews (P1-P8), the per-task status table and the review log.
