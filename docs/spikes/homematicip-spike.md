@@ -29,7 +29,7 @@ Use `homematicip` **2.23.1** on Python 3.12 (its minimum). Proceed to Design, bu
 | Battery | Only `lowBat` (bool), `unreach` (bool), `rssiDeviceValue`, `deviceUndervoltage` (bool). **No battery voltage or percentage.** Confirms intent Q6: low-since and last-replaced tracking in `state/` is the main early-warning signal; `deviceUndervoltage` and `unreach` are extra early signals. |
 
 ## Risks
-1. **Licence: GPL-3.0-or-later.** Fine for private use; if the image or source is distributed, the combined work must be GPL-compatible. **Decision (2026-11-18): accepted for private use**; see SBOM "Licence decision" for conditions.
+1. **Licence: GPL-3.0-or-later.** Decision (2026-11-18): this repo is MIT; the public image is distributed under GPL terms for the combined work. See SBOM "Licence decision" and `THIRD_PARTY_NOTICES.md`.
 2. Unofficial cloud API: can change without notice; pin the version and keep `Source` behind the protocol so a local CCU client remains possible.
 3. Pins were resolved on Python 3.13; verify on 3.12 in CI.
 4. Library pulls `httpx2` and `opentelemetry-api` transitively; larger dependency surface than a hand-written client.

@@ -1,6 +1,6 @@
 # Third-party notices
 
-This repository's own licence is not declared in this file. This file lists third-party material that was copied or adapted into the repository and the notices its licence requires.
+This repository's own code is licensed under the MIT licence (see `LICENSE`). This file lists third-party material that was copied or adapted into the repository, or is bundled into the container image, and the notices its licence requires.
 
 ## everything-claude-code (ECC)
 
@@ -57,6 +57,15 @@ SOFTWARE.
 
 The ECC-derived agents, rules and skills are provided "as is", without warranty. They are AI-assistant configuration, not tested security or compliance controls: review their output before relying on it. Modifications made in this repository are the responsibility of this repository's maintainers, not of the ECC author.
 
+## homematicip (GPL-3.0-or-later), bundled in the container image
+
+The exporter imports the `homematicip` library (pinned in `requirements.txt`, currently 2.23.1; author Thomas Hahn; licence GPL-3.0-or-later; project: github.com/hahn-th/homematicip-rest-api). The library is **not** copied into this repository. It **is** installed into the published container image.
+
+- This repository's own code is MIT. The container image combines that code with the GPL-licensed library, so **the image as a whole is distributed under the terms of GPL-3.0-or-later** for the combined work. MIT is compatible with the GPL, so recipients may use, modify and redistribute the image under the GPL.
+- Corresponding source: this repository (MIT code) and the library source for the pinned version, available from PyPI (`pip download homematicip==<version> --no-binary :all: --no-deps`) and the project page above.
+- The image must ship the GPL-3.0 text and this notice (see "Image distribution checklist" in `docs/sbom/components.md`).
+- Not legal advice. Do not remove the notices above when redistributing.
+
 ## Python dependencies
 
-Runtime and development dependencies are not copied into this repository. Their versions and licences are tracked in `docs/sbom/components.md` and the generated `docs/sbom/sbom.cdx.json`. Note: `homematicip` is GPL-3.0-or-later (accepted for private use; see the SBOM licence decision).
+Runtime and development dependencies are not copied into this repository. Their versions and licences are tracked in `docs/sbom/components.md` and the generated `docs/sbom/sbom.cdx.json`.

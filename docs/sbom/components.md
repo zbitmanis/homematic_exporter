@@ -43,10 +43,19 @@ Resolved and pinned 2026-11-18 in `requirements.txt` / `requirements-dev.txt` (r
 
 Transitive runtime dependencies (29 packages in total) are listed in the generated SBOM. Other licences seen: PSF (typing_extensions, aiohappyeyeballs), MPL-2.0 (certifi), Apache-2.0 (aiohttp, multidict, yarl, frozenlist, propcache, opentelemetry-api).
 
-### Licence decision (accepted 2026-11-18)
-`homematicip` is GPL-3.0-or-later, outside the allowlist. **Decision (owner): accept for private use.** Conditions that stay in force:
-- The image and source stay private. If either is ever published or distributed, relicense this repo GPL-3.0-or-later (or replace the library) first.
+### Licence decision (updated 2026-11-18)
+`homematicip` is GPL-3.0-or-later, outside the allowlist. **Decision (owner): this repository is licensed MIT, and the GPL dependency is accepted.** Consequences:
+- Our own code is MIT (`LICENSE`). MIT is GPL-compatible, so combining is allowed.
+- The Docker Hub repo is **public**, so the image **is distributed**; the combined image is then distributed under GPL-3.0-or-later terms for the whole work (see `THIRD_PARTY_NOTICES.md`). The earlier condition "image and source stay private" no longer applies.
 - CI licence check treats `homematicip` as an explicit, documented exception.
+- If the GPL terms become unacceptable, the alternative is replacing `homematicip` with an own `httpx` client (clean-room, no GPL source reuse).
+
+#### Image distribution checklist (for the Dockerfile and release workflow)
+- [ ] Copy `LICENSE`, `THIRD_PARTY_NOTICES.md` and the GPL-3.0 text into the image (e.g. `/licenses/`)
+- [ ] Label the image: `org.opencontainers.image.licenses="MIT AND GPL-3.0-or-later"`, `org.opencontainers.image.source=<repo URL>`
+- [ ] State in the Docker Hub description that the image bundles `homematicip` (GPL-3.0-or-later) with a source link
+- [ ] Attach the CycloneDX SBOM to releases (already planned)
+- [ ] Re-check the licence list on every dependency change (`pip-licenses` vs the allowlist)
 
 Runtime image: multi-stage, slim Python base (record the base image digest in the SBOM at build).
 
