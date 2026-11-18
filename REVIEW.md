@@ -16,4 +16,4 @@ Python changes go through `python-reviewer` (`fastapi-reviewer` for `app/`), the
 Generated files, `docs/sbom/sbom.cdx.json`, recorded test fixtures.
 
 ## Where the review phases are tracked
-`specs/plan.md` defines the per-task pipeline (R1-R6), the phase-level reviews (P1-P8), the per-task status table and the review log.
+`specs/plan.md` defines the **closing review task** that ends every plan (steps R1-R10 with all reviewers and which apply to which task), the phase-level reviews (P1-P8), the per-task status table and the review log. The PR is not opened until the closing task is complete.

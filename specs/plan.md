@@ -1,35 +1,59 @@
 # Plan
 
-Master plan: task list with **review phases** (below), then the detail of each task. Review rules live in `REVIEW.md`; agent roster in `docs/harness.md`.
+Master plan: task list with the **closing review task** every plan ends with and the phase-level reviews (below), then the detail of each task. Review rules live in `REVIEW.md`; agent roster in `docs/harness.md`.
 
 ## Tasks and status
 
-| # | Task | Branch | Build | Review pipeline (R1-R6) | Status |
+| # | Task | Branch | Build | Closing review task (R1-R10, section A) | Status |
 |---|---|---|---|---|---|
-| 1 | shared contracts + mini fixture | `feat/contracts` | done | R1 done, R2/R3 catch-up done (findings planned), R4 skipped, R5 n/a, R6 done | merged `824c8b6`, v1.1.0; fix-up task 1b planned |
-| 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | built (gate green: 69 tests, `mypy src tests`) | R1 done; R2/R3 done twice (architect: ready with conditions, closed; security: 2 HIGH found and fixed); R6 pending | **blocks** 2a-2c until merged |
-| 1c | ownership guardrails: path-guard hook, CI check tying contract changes to spec changes, CODEOWNERS | `feat/ownership-guard` | not started | R1-R3, R6 | before or alongside phase 2 |
-| 2a | `state` | `feat/state` | not started | - | after 1b merges (plan: `specs/plans/state.md`) |
-| 2b | `metrics` | `feat/metrics` | not started | - | after 1b merges (`specs/plans/metrics.md`) |
-| 2c | `source` | `feat/source` | not started | - | after 1b merges (`specs/plans/source.md`) |
-| 3 | `app` + e2e | `feat/app` | not started | R1-R6 incl. `fastapi-reviewer` and `verifier` | planned |
-| 4 | tools and deployment: `check_config`, fixture-to-exposition golden test, Dockerfile run + default config + `APP_VERSION`, Quadlet, alert rules | `feat/deploy` | not started | R1-R3, R6, then phase review P4 | planned |
-| 5 | `generate_config` (R22) | `feat/generate-config` | not started | R1-R4, R6 | planned |
+| 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
+| 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
+| 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater`, security re-check of `redact.py` | `fix/1b-closing-review` | - | R2, R3, R4 (re-check), R6, R9 | planned, **before phase 2** |
+| 1c | ownership guardrails: path-guard hook, CI check tying contract changes to spec changes, CODEOWNERS | `feat/ownership-guard` | not started | R1-R5, R8, R9, R10 (section A matrix) | before or alongside phase 2 |
+| 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
+| 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
+| 2c | `source` | `feat/source` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/source.md`) |
+| 3 | `app` + e2e | `feat/app` | not started | all steps incl. `fastapi-reviewer`, `verifier`, `e2e-runner`, `performance-optimizer` | planned |
+| 4 | tools and deployment: `check_config`, fixture-to-exposition golden test, Dockerfile run + default config + `APP_VERSION`, Quadlet, alert rules | `feat/deploy` | not started | all steps, then phase review P4 | planned |
+| 5 | `generate_config` (R22) | `feat/generate-config` | not started | R1-R6, R8-R10 | planned |
 
 ## Review phases
 
-### A. Per-task review pipeline (every task, in this order, before the PR is opened)
+### A. Closing review task (the mandatory last task of every plan)
 
-| Step | Who | What | Blocks merge if |
+Every task plan, including every module plan in `specs/plans/`, ends with this closing task. **The PR is not opened until it is complete**; a step may be marked n/a only with the reason in the PR. The PR description lists the result of every step (reviewer verdict, finding counts, gate output). Unresolved CRITICAL or HIGH findings block the PR; the owner accepts any residual item explicitly (review log).
+
+| Step | Who | What | Blocks the PR if |
 |---|---|---|---|
-| R1 Gate | implementer, then CI | `ruff check`, `ruff format --check`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py`; output pasted in the PR | any failure (CI is authoritative; local runs are on 3.13 until 3.12 is confirmed) |
-| R2 Code review | `python-reviewer`; plus `fastapi-reviewer` for `app`; `code-reviewer` for cross-module diffs | correctness, types, async, spec match | any CRITICAL or HIGH |
-| R3 Security review | `security-reviewer` | secrets, logs, config, state permissions, workflows, image | any CRITICAL or HIGH |
-| R4 Simplify | `code-simplifier` (optional) | behavior-preserving clean-up after R2/R3 are clean; gate re-run | gate fails after the change |
-| R5 Verify | `verifier` (and `e2e-runner` from task 3) | run the thing: `/metrics`, failure and restart behavior, no secrets in output | any failed check; **n/a** until an app exists |
-| R6 Owner review | you | PR review; squash merge with a Conventional Commit title | your call |
+| R1 Gate | implementer, then CI | `ruff check`, `ruff format --check`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py`; output pasted | any failure (CI is authoritative; local runs are on 3.13 until 3.12 is confirmed) |
+| R2 Python review | `python-reviewer`; `fastapi-reviewer` for `app` | idioms, types, async, spec match | CRITICAL or HIGH |
+| R3 Code review | `code-reviewer` | diff against spec and plan, tests meaningful, contract gaps | CRITICAL or HIGH |
+| R4 Security review | `security-reviewer` | secrets, logs, config, state permissions, workflows, image; try to break scrubbing or parsing | CRITICAL or HIGH |
+| R5 Architecture review | `architect` | module boundaries, contracts, shared files, merge-order hazards | not ready / HIGH |
+| R6 Simplify | `code-simplifier` | behavior-preserving clean-up after R2-R5 are clean; gate re-run | gate fails afterwards |
+| R7 Performance review | `performance-optimizer` | poll cost, event-loop blocking, memory, series count, image size | a regression against the spec targets |
+| R8 Verify | `verifier` (run the thing); `e2e-runner` (failure, restart, container) | `/metrics`, failure and restart behavior, no secrets in output | any failed check |
+| R9 Docs in sync | `doc-updater` | `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue, harness doc match the change | stale or contradicting docs |
+| R10 Owner review | you | PR review; squash merge with a Conventional Commit title | your call |
 
-Rules: the agent that wrote the code never reviews it; reviewers are read-only; findings are recorded in the task's review log (table below) with a status (open, fixed, accepted, rejected + reason); a finding is only "accepted" by the owner.
+Rules: the agent that wrote the code never reviews it; reviewers are read-only; after a fix for a HIGH or CRITICAL finding the same reviewer re-checks it; findings go in the review log (table D) with a status (open, fixed, accepted, rejected + reason); only the owner can mark a finding accepted.
+
+**Which steps apply to which task** (R = required, C = conditional, n/a = not applicable; the reason is written in the PR):
+
+| Step | 2a `state`, 2b `metrics`, 2c `source` | 3 `app` + e2e | 4 tools + deploy | 5 `generate_config` | 1c ownership guardrails |
+|---|---|---|---|---|---|
+| R1 Gate | R | R | R | R | R |
+| R2 Python (+ FastAPI) | R | R (+ `fastapi-reviewer`) | R | R | R for any Python |
+| R3 Code | R | R | R | R | R |
+| R4 Security | R | R | R | R | R (hooks run commands) |
+| R5 Architecture | C (R if a contract change was requested or shared types touched) | R | R | C | R |
+| R6 Simplify | R | R | R | R | n/a |
+| R7 Performance | C (parser and registry hot paths) | R | R (image size, start-up) | n/a | n/a |
+| R8 Verify | n/a (tests only) | R (`verifier` + `e2e-runner`) | R (`verifier` + `e2e-runner`) | R (`verifier` on the fixture) | R (`verifier` triggers a violating edit) |
+| R9 Docs | R | R | R | R | R |
+| R10 Owner | R | R | R | R | R |
+
+Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer` once an `evals/` suite exists (phase review P7).
 
 ### B. Phase-level reviews
 
@@ -44,15 +68,21 @@ Rules: the agent that wrote the code never reviews it; reviewers are read-only; 
 | P7 | Harness review | once an `evals/` suite exists, then periodically | `harness-optimizer` | blocked: no evals yet |
 | P8 | First live run review | first run against the real access point | owner: compare exported values with the Homematic app | planned |
 
-### C. Review status per task
+### C. Review status per task (R1 Gate, R2 Python, R3 Code, R4 Security, R5 Architecture, R6 Simplify, R7 Performance, R8 Verify, R9 Docs, R10 Owner)
 
-| Task | R1 Gate | R2 Code | R3 Security | R4 Simplify | R5 Verify | R6 Owner |
-|---|---|---|---|---|---|---|
-| 1 contracts | pass (local 3.13; CI result not seen) | approve; 5 MEDIUM, 2 LOW | approve; 2 LOW | skipped | n/a | done |
-| 2a state | - | - | - | - | n/a | - |
-| 2b metrics | - | - | - | - | n/a | - |
-| 2c source | - | - | - | - | n/a | - |
-| 3 app | - | - | - | - | - | - |
+| Task | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 | R9 | R10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 contracts | pass (3.13) | approve (catch-up) | approve (catch-up) | approve (catch-up) | not ready, fixed in 1b | skipped | n/a | n/a | n/a | merged |
+| 1b readiness | pass (3.13) | **not run** | **not run** | done: 2 HIGH found and fixed; fixes **not re-checked** by the reviewer | done: ready with conditions, conditions closed | **not run** | n/a | n/a | by coordinator, **`doc-updater` not run** | merged (#5) |
+| 1c guardrails | - | - | - | - | - | n/a | n/a | - | - | - |
+| 2a state | - | - | - | - | C | - | C | n/a | - | - |
+| 2b metrics | - | - | - | - | C | - | C | n/a | - | - |
+| 2c source | - | - | - | - | C | - | C | n/a | - | - |
+| 3 app | - | - | - | - | - | - | - | - | - | - |
+| 4 tools + deploy | - | - | - | - | - | - | - | - | - | - |
+| 5 generate_config | - | - | - | - | C | - | n/a | - | - | - |
+
+Gaps in the closed tasks are real: task 1b was merged without `python-reviewer`, `code-reviewer`, `code-simplifier` and `doc-updater`, and without a re-check of the `redact.py` fixes. Task `1b-close` (below) tracks them.
 
 ### D. Review log
 

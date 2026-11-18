@@ -13,3 +13,4 @@ You implement exactly one module, named in the task, in its own worktree.
 4. Run `ruff check .`, `ruff format --check .`, `mypy src`, `pytest -q`; paste the output. Never weaken a test to make it pass.
 5. If the build breaks, hand off to `python-build-resolver`; before merge, `python-reviewer` (and `fastapi-reviewer` for `app/`) and `security-reviewer` run.
 6. If you deviate from your plan, update it in the same commit.
+7. Finish with the closing review task of your plan (R1 gate output is yours; the reviewers are run by the coordinator, never by you). Report which steps are still open.
