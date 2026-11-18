@@ -126,6 +126,8 @@ class StateStore(Protocol):
     def save(self, key: str, value: dict) -> None: ...   # atomic
 ```
 
+`src/homematic_exporter/config_models.py` is the second shared contract (added in the contracts task, see `specs/plan.md`): pydantic models `ExtractConfig` (with `ValveRule`, `ContactRule`, `ExtraField`) and `Tuning`, the validated `extract` and `tuning` sections of `config.yaml`. They must be shared because `source` needs `ExtractConfig` and `state` needs `Tuning`, while modules may not import each other; `metrics` composes them into `AppConfig` together with the metric definitions. Same rule as `contracts.py`: changes need a spec change in the same commit.
+
 | Module | Public interface | Notes |
 |---|---|---|
 | `source` | `CloudSource(access_point, token, timeout, extract)`, `FileSource(path, extract)`, `parse_snapshot(raw: dict, now: float, extract: ExtractConfig) -> Snapshot` | Cloud uses `homematicip` `AsyncHome.init_async` + `download_configuration_async()` and parses the **raw JSON** itself, so tests need only the fixture and the library's object model is not a dependency of the parser. `FileSource` reads the same JSON (used by e2e and demos). |

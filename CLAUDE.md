@@ -13,7 +13,7 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - Run: `uvicorn homematic_exporter.app:create_app --factory --port 9100`
 
 ## Architecture
-- Modules under `src/homematic_exporter/`: `source`, `state`, `metrics`, `app`. Contract in `contracts.py`.
+- Modules under `src/homematic_exporter/`: `source`, `state`, `metrics`, `app`. Shared contracts: `contracts.py` and `config_models.py`.
 - Poll loop (asyncio background task) updates metrics; scrapes read cache only. Never call the source from a request handler.
 - Mapping is config: a mounted `config.yaml` (default `/etc/homematic-exporter/config/config.yaml`, bundled fallback) holds model names, raw field names, channel types, metric definitions and tuning; adding a metric or numeric field must not need Python changes. Joins, naming, battery history and derived metrics stay in code. Validate with `python -m homematic_exporter.check_config`. See `specs/spec.md` 5.1.
 - Config is env vars with defaults; no hardcoded URLs, ports, paths or intervals.
