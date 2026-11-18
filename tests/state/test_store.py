@@ -8,16 +8,125 @@ import pytest
 
 from homematic_exporter.contracts import StateStore
 from homematic_exporter.state import FileStateStore, StateDirError
+from homematic_exporter.state.store import MAX_STATE_BYTES
 
 
 def mode(path: Path) -> int:
     return stat.S_IMODE(path.stat().st_mode)
 
 
-def test_creates_directory_0700(tmp_path: Path) -> None:
-    target = tmp_path / "a" / "state"
-    FileStateStore(target)
+@pytest.mark.parametrize("umask", [0o022, 0o077, 0o000])
+def test_creates_directory_0700(tmp_path: Path, umask: int) -> None:
+    target = tmp_path / "state"
+    old = os.umask(umask)
+    try:
+        FileStateStore(target)
+    finally:
+        os.umask(old)
     assert mode(target) == 0o700
+
+
+def test_missing_parent_is_an_error_without_path(tmp_path: Path) -> None:
+    target = tmp_path / "a" / "state"
+    with pytest.raises(StateDirError) as exc:
+        FileStateStore(target)
+    assert str(tmp_path) not in str(exc.value)
+    assert not (tmp_path / "a").exists()
+
+
+def test_refuses_directory_owned_by_someone_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    d = tmp_path / "s"
+    d.mkdir(mode=0o700)
+    monkeypatch.setattr(os, "getuid", lambda: os.stat(d).st_uid + 1)
+    with pytest.raises(StateDirError) as exc:
+        FileStateStore(d)
+    assert str(d) not in str(exc.value)
+
+
+def test_leftover_temp_files_removed_at_startup(tmp_path: Path) -> None:
+    d = tmp_path / "s"
+    FileStateStore(d)
+    (d / ".battery.abc123.tmp").write_text("partial")
+    (d / "battery.json").write_text("{}")
+    FileStateStore(d)
+    assert [p.name for p in d.iterdir()] == ["battery.json"]
+
+
+def test_save_fsyncs_file_and_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = FileStateStore(tmp_path / "s")
+    calls: list[int] = []
+    real = os.fsync
+
+    def counting_fsync(fd: int) -> None:
+        calls.append(fd)
+        real(fd)
+
+    monkeypatch.setattr(os, "fsync", counting_fsync)
+    store.save("k", {"v": 1})
+    assert len(calls) == 2
+
+
+def test_directory_fsync_failure_is_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = FileStateStore(tmp_path / "s")
+    real_open = os.open
+
+    def fail_dir_open(path: str | Path, flags: int, *a: int, **k: int) -> int:
+        if flags == os.O_RDONLY:
+            raise OSError("unsupported")
+        return real_open(path, flags, *a, **k)
+
+    monkeypatch.setattr(os, "open", fail_dir_open)
+    store.save("k", {"v": 1})
+    monkeypatch.undo()
+    assert store.load("k") == {"v": 1}
+
+
+def test_oversized_file_treated_as_corrupt(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = FileStateStore(tmp_path / "s")
+    (tmp_path / "s" / "k.json").write_bytes(b" " * (MAX_STATE_BYTES + 1) + b"{}")
+    with caplog.at_level(logging.WARNING):
+        assert store.load("k") is None
+    assert len(caplog.records) == 1
+
+
+@pytest.mark.parametrize(
+    "content", [b'{"a": NaN}', b'{"a": Infinity}', b'{"a": -Infinity}', b"[" * 100000]
+)
+def test_non_finite_and_deeply_nested_are_corrupt(tmp_path: Path, content: bytes) -> None:
+    store = FileStateStore(tmp_path / "s")
+    (tmp_path / "s" / "k.json").write_bytes(content)
+    assert store.load("k") is None
+
+
+def test_save_rejects_non_finite(tmp_path: Path) -> None:
+    store = FileStateStore(tmp_path / "s")
+    with pytest.raises(ValueError):
+        store.save("k", {"v": float("nan")})
+    assert list((tmp_path / "s").iterdir()) == []
+
+
+def test_key_length_limit(tmp_path: Path) -> None:
+    store = FileStateStore(tmp_path / "s")
+    store.save("a" * 64, {"v": 1})
+    assert store.load("a" * 64) == {"v": 1}
+    with pytest.raises(ValueError):
+        store.save("a" * 65, {})
+    with pytest.raises(ValueError):
+        store.load("a" * 65)
+
+
+def test_non_str_key_rejected(tmp_path: Path) -> None:
+    store = FileStateStore(tmp_path / "s")
+    with pytest.raises(ValueError):
+        store.save(1, {})  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        store.load(None)  # type: ignore[arg-type]
 
 
 def test_accepts_existing_0700_dir(tmp_path: Path) -> None:
@@ -107,7 +216,8 @@ def test_unreadable_file_returns_none(tmp_path: Path, caplog: pytest.LogCaptureF
     (tmp_path / "s" / "k.json").mkdir()  # reading a directory raises OSError
     with caplog.at_level(logging.WARNING):
         assert store.load("k") is None
-    assert caplog.records
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]
+    assert str(tmp_path) not in caplog.text
 
 
 @pytest.mark.parametrize(

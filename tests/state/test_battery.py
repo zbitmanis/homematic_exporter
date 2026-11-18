@@ -1,3 +1,5 @@
+import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,16 +14,31 @@ T0 = datetime(2026, 3, 10, 12, 0, tzinfo=UTC).timestamp()
 
 
 class MemStore:
+    """Stores a JSON round-tripped copy, so only a real `save` call changes `data`."""
+
     def __init__(self) -> None:
         self.data: dict[str, dict[str, object]] = {}
         self.saves = 0
 
     def load(self, key: str) -> dict[str, object] | None:
-        return self.data.get(key)
+        value = self.data.get(key)
+        return None if value is None else json.loads(json.dumps(value))
 
     def save(self, key: str, value: dict[str, object]) -> None:
         self.saves += 1
-        self.data[key] = value
+        self.data[key] = json.loads(json.dumps(value))
+
+
+class FlakyStore(MemStore):
+    def __init__(self, failures: int) -> None:
+        super().__init__()
+        self.failures = failures
+
+    def save(self, key: str, value: dict[str, object]) -> None:
+        if self.failures:
+            self.failures -= 1
+            raise OSError("disk full /secret/path")
+        super().save(key, value)
 
 
 def dev(
@@ -166,8 +183,6 @@ def test_transition_writes(hist: BatteryHistory, store: MemStore) -> None:
 
 
 def test_persisted_shape_is_json_compatible(hist: BatteryHistory, store: MemStore) -> None:
-    import json
-
     hist.update([dev(low=True)], T0)
     stored = json.loads(json.dumps(store.data["battery"]))
     rec = stored["records"]["kitchen thermostat"]
@@ -235,13 +250,31 @@ def test_corrupt_store_starts_empty(tmp_path: Path) -> None:
     assert one(BatteryHistory(fs, Tuning()).update([dev(low=True)], T0)).low_since == T0
 
 
+def rec_data(**kw: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "room": "kitchen",
+        "device_type": "thermostat",
+        "low_since": None,
+        "last_replaced": None,
+        "last_seen_day": "2026-03-10",
+    }
+    base.update(kw)
+    return base
+
+
 @pytest.mark.parametrize(
     "data",
     [
-        {"records": "x"},
-        {"records": {"a": "x"}},
-        {"records": {"a": {"last_seen_day": "bogus"}}},
-        {"records": {"a": {"low_since": True}}},
+        {"version": 1, "records": "x"},
+        {"version": 1, "records": {"a": "x"}},
+        {"version": 1, "records": {"a": {"last_seen_day": "bogus"}}},
+        {"version": 1, "records": {"a": rec_data(low_since=True)}},
+        {"version": 1, "records": {"a": rec_data(low_since=10**400)}},
+        {"version": 1, "records": {"a": rec_data(low_since=float("nan"))}},
+        {"version": 1, "records": {"a": rec_data(last_replaced=float("inf"))}},
+        {"version": 1, "records": {"a": rec_data(low_since="5")}},
+        {"version": 2, "records": {"a": rec_data(low_since=5)}},
+        {"records": {"a": rec_data(low_since=5)}},
         {},
     ],
 )
@@ -249,6 +282,78 @@ def test_malformed_content_is_dropped_not_fatal(store: MemStore, data: dict[str,
     store.data["battery"] = data
     h = BatteryHistory(store, Tuning())
     assert one(h.update([dev("a", low=False)], T0)).low_since is None
+    assert store.saves == 1  # the fresh record replaced whatever was stored
+    assert names(store) == ["a"]
+
+
+def test_mixed_valid_and_invalid_records(store: MemStore, caplog: pytest.LogCaptureFixture) -> None:
+    store.data["battery"] = {
+        "version": 1,
+        "records": {
+            "bad": rec_data(low_since=10**400),
+            "good": rec_data(low_since=5),
+            "nan": rec_data(low_since=float("nan")),
+        },
+    }
+    with caplog.at_level(logging.WARNING):
+        h = BatteryHistory(store, Tuning())
+    assert len(caplog.records) == 2
+    rec = one(h.update([dev("good", low=True)], T0))
+    assert rec.low_since == 5.0 and isinstance(rec.low_since, float)
+    assert names(store) == ["good"]  # dropped records gone from stored data
+
+
+def test_room_or_type_change_saves_and_updates(hist: BatteryHistory, store: MemStore) -> None:
+    hist.update([dev(room="kitchen")], T0)
+    saves = store.saves
+    rec = one(hist.update([dev(room="hall")], T0 + 10))
+    assert rec.room == "hall" and store.saves == saves + 1
+    records = store.data["battery"]["records"]
+    assert isinstance(records, dict)
+    assert records["kitchen thermostat"]["room"] == "hall"
+
+
+def test_failed_save_is_retried_with_unchanged_data(caplog: pytest.LogCaptureFixture) -> None:
+    store = FlakyStore(failures=1)
+    h = BatteryHistory(store, Tuning())
+    with caplog.at_level(logging.WARNING):
+        rec = one(h.update([dev(low=True)], T0))
+    assert rec.low_since == T0  # records still returned
+    assert "battery" not in store.data
+    assert len(caplog.records) == 1
+    assert "secret" not in caplog.text and "OSError" in caplog.text
+    h.update([dev(low=True)], T0 + 10)  # nothing changed, but the write is retried
+    assert "battery" in store.data and store.saves == 1
+    h.update([dev(low=True)], T0 + 20)
+    assert store.saves == 1  # flag cleared after success
+
+
+def test_failed_save_keeps_failing_then_recovers() -> None:
+    store = FlakyStore(failures=2)
+    h = BatteryHistory(store, Tuning())
+    h.update([dev(low=True)], T0)
+    h.update([dev(low=True)], T0 + 10)
+    assert store.saves == 0
+    h.update([dev(low=True)], T0 + 20)
+    assert store.saves == 1
+
+
+def test_restart_after_failed_save_does_not_hide_change() -> None:
+    store = FlakyStore(failures=1)
+    BatteryHistory(store, Tuning()).update([dev(low=False)], T0)
+    h2 = BatteryHistory(store, Tuning())  # nothing persisted
+    assert one(h2.update([dev(low=True)], T0 + 100)).low_since == T0 + 100
+    assert store.saves == 1
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), -1e12, 1e18])
+def test_invalid_now_raises_without_mutation(
+    hist: BatteryHistory, store: MemStore, bad: float
+) -> None:
+    with pytest.raises(ValueError, match="invalid timestamp"):
+        hist.update([dev(low=True)], bad)
+    assert store.saves == 0
+    assert one(hist.update([dev(low=True)], T0)).low_since == T0
 
 
 def test_time_is_injected_not_read(hist: BatteryHistory) -> None:

@@ -1,6 +1,7 @@
 """Battery history (spec 8): low-since / last-replaced per device name, persisted as `battery`."""
 
 import logging
+import math
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 
@@ -16,55 +17,64 @@ _VERSION = 1
 _Stored = dict[str, object]
 
 
-def _num(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
+def _opt_num(value: object) -> float | None:
+    """None stays None; a finite non-bool number becomes float; anything else is malformed."""
+    if value is None:
         return None
-    return float(value)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("not a number")
+    number = float(value)  # OverflowError (huge int) is handled by the caller
+    if not math.isfinite(number):
+        raise ValueError("not finite")
+    return number
 
 
 def _text(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _day(value: object) -> date | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        return None
-
-
 class BatteryHistory:
     def __init__(self, store: StateStore, tuning: Tuning) -> None:
         self._store = store
         self._retention = timedelta(days=tuning.state_retention_days)
+        self._unsaved = False  # a change that has not reached the store yet
         self._records: dict[str, _Stored] = self._load()
 
     def _load(self) -> dict[str, _Stored]:
         data = self._store.load(KEY)
         records: dict[str, _Stored] = {}
-        raw = data.get("records") if data else None
-        if not isinstance(raw, dict):
+        if not data:
+            return records
+        raw = data.get("records")
+        if data.get("version") != _VERSION or not isinstance(raw, dict):
+            logger.warning("battery history has an unknown format; starting empty")
+            self._unsaved = True
             return records
         for name, rec in raw.items():
-            seen = _day(rec.get("last_seen_day")) if isinstance(rec, dict) else None
-            if not isinstance(name, str) or not isinstance(rec, dict) or seen is None:
+            try:
+                if not isinstance(rec, dict):
+                    raise ValueError("record is not an object")
+                records[name] = {
+                    "room": _text(rec.get("room")),
+                    "device_type": _text(rec.get("device_type")),
+                    "low_since": _opt_num(rec.get("low_since")),
+                    "last_replaced": _opt_num(rec.get("last_replaced")),
+                    "last_seen_day": date.fromisoformat(str(rec.get("last_seen_day"))).isoformat(),
+                }
+            except (ValueError, TypeError, OverflowError):
                 logger.warning("dropping malformed battery history record")
-                continue
-            records[name] = {
-                "room": _text(rec.get("room")),
-                "device_type": _text(rec.get("device_type")),
-                "low_since": _num(rec.get("low_since")),
-                "last_replaced": _num(rec.get("last_replaced")),
-                "last_seen_day": seen.isoformat(),
-            }
+                self._unsaved = True  # rewrite the store without it
         return records
 
     def update(self, devices: Sequence[Device], now: float) -> list[BatteryRecord]:
-        today = datetime.fromtimestamp(now, UTC).date()
+        try:
+            if not math.isfinite(now):
+                raise ValueError
+            today = datetime.fromtimestamp(now, UTC).date()
+        except (ValueError, OverflowError, OSError):
+            raise ValueError("invalid timestamp") from None
         today_s = today.isoformat()
-        dirty = False
+        dirty = self._unsaved
         result: list[BatteryRecord] = []
 
         for dev in devices:
@@ -101,8 +111,8 @@ class BatteryHistory:
                     device=dev.name,
                     room=dev.room,
                     device_type=dev.device_type,
-                    low_since=_num(rec["low_since"]),
-                    last_replaced=_num(rec["last_replaced"]),
+                    low_since=_float(rec["low_since"]),
+                    last_replaced=_float(rec["last_replaced"]),
                 )
             )
 
@@ -111,11 +121,23 @@ class BatteryHistory:
             del self._records[name]
             dirty = True
 
+        self._unsaved = dirty
         if dirty:
-            self._store.save(KEY, {"version": _VERSION, "records": self._records})
+            try:
+                self._store.save(KEY, {"version": _VERSION, "records": self._records})
+            except OSError as exc:
+                # Keep serving; the next update retries because `_unsaved` stays set.
+                logger.warning("battery history save failed (%s); will retry", type(exc).__name__)
+            else:
+                self._unsaved = False
         return result
 
 
+def _float(value: object) -> float | None:
+    return value if isinstance(value, float) else None
+
+
 def _is_older(rec: _Stored, cutoff: date) -> bool:
-    seen = _day(rec["last_seen_day"])
-    return seen is not None and seen < cutoff
+    # `_load` and `update` guarantee a valid ISO date. A future date is simply not pruned
+    # until time catches up.
+    return date.fromisoformat(str(rec["last_seen_day"])) < cutoff

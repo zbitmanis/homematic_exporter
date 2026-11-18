@@ -43,4 +43,9 @@ The PR is not opened until every step is done or marked n/a with a reason. Paste
 - [ ] R10 owner PR review and squash merge
 
 ## Requests (to the coordinator)
-_none yet_
+These are requests to the coordinator (separate docs PR).
+
+- (a) spec section 8 / R12 / R14 clarifications: the stored format includes `room` and `device_type` (a change to either causes a save); `unreachable` None counts as reachable, also on first sight; "was low" means `low_since is not None`; R12 means the directory permissions (plus owner and non-directory checks); pruning keeps a record exactly N days old; malformed stored records are dropped; a failed save is retried on the next update; an invalid `now` raises `ValueError`.
+- (b) app plan: construct `FileStateStore(STATE_DIR)` in `wiring.py` and map `StateDirError` to a non-zero exit with a path-free log line; pass `config.tuning`; call `update(devices, snapshot.taken_at)` from the single poll task; run the synchronous fsync write off the event loop (`asyncio.to_thread`); document that `update` never raises `OSError`.
+- (c) deployment note: the state volume must be mode 0700 and owned by the container user (rootless podman: the `:U` volume option or equivalent); a private parent directory is recommended (the store does not create parents).
+- (d) `docs/sbom/components.md` row for `state`: depends on "contracts, config_models" and lists `StateDirError`.
