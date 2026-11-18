@@ -1,0 +1,46 @@
+# Default config bundled in the image (spec 5.1). Mounted override: /etc/homematic-exporter/config/config.yaml.
+# Contains no secrets and no identifying data, so it may live in git.
+#
+# Ownership: `extract` and `tuning` are fixed by the contracts task (changing a key needs a spec change);
+# the `metrics` list is filled by the `metrics` task.
+version: 1
+tuning:
+  heat_demand_min_position: 0.0     # valve position above this counts as open
+  state_retention_days: 90          # battery history records unseen this long are pruned
+extract:
+  system_room: system               # room for devices not in exactly one room
+  room_group_type: HEATING          # groups of this type are rooms; room name = group label
+  device_models:                    # raw modelType -> device_type label
+    "HmIP-eTRV-B-2 R4M": radiator-thermostat
+    "HmIP-STH": temp-humidity-sensor
+    "HmIP-STHD": temp-humidity-display
+    "HmIP-WTH-1": wall-thermostat
+    "HmIP-SWDM-2": door-window-contact
+    "HmIP-FALMOT-C12": floor-controller
+    "HmIP-FSM": circulation-pump-switch
+    "HmIP-HAP JS1": access-point
+  rooms:                            # Room attribute: raw group field
+    temperature_celsius: actualTemperature
+    setpoint_celsius: setPointTemperature
+    humidity: humidity
+    control_mode: controlMode
+    window_state: windowState
+  device_flags:                     # Device attribute: raw field on the device base channels
+    low_battery: lowBat
+    unreachable: unreach
+    undervoltage: deviceUndervoltage
+    rssi_dbm: rssiDeviceValue
+  valves:
+    - channel_type: FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL
+      device_type: floor-valve
+      room_from: channel_groups     # room named by the channel's HEATING group; skipped if none
+      fields: { position_ratio: valvePosition }
+    - channel_type: HEATING_THERMOSTAT_CHANNEL
+      device_type: radiator-thermostat
+      room_from: device_room
+      fields: { position_ratio: valvePosition, actual_temperature_celsius: valveActualTemperature }
+  contacts:
+    - channel_type: SHUTTER_CONTACT_CHANNEL
+      fields: { window_state: windowState }
+  extras: []                        # e.g. - { scope: room, key: boost_duration, field: boostDuration }
+metrics: []                         # defined by the metrics task (spec 6)

@@ -4,9 +4,9 @@ See spec 5.1. Shared contract like `contracts.py`: `source` and `state` consume 
 `metrics` owns loading and the metric-definition schema. Unknown keys are rejected (spec R19).
 """
 
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ROOM_ATTRIBUTES = frozenset(
     {"temperature_celsius", "setpoint_celsius", "humidity", "control_mode", "window_state"}
@@ -32,20 +32,26 @@ class ValveRule(_Strict):
     room_from: Literal["channel_groups", "device_room"]
     fields: dict[str, str]
 
-    @model_validator(mode="after")
-    def _check_fields(self) -> Self:
-        _only(self.fields, VALVE_FIELDS, "valve")
-        return self
+    @field_validator("fields")
+    @classmethod
+    def _check_fields(cls, fields: dict[str, str]) -> dict[str, str]:
+        _only(fields, VALVE_FIELDS, "valve")
+        if "position_ratio" not in fields:
+            raise ValueError("a valve rule must map position_ratio")
+        return fields
 
 
 class ContactRule(_Strict):
     channel_type: str
     fields: dict[str, str]
 
-    @model_validator(mode="after")
-    def _check_fields(self) -> Self:
-        _only(self.fields, CONTACT_FIELDS, "contact")
-        return self
+    @field_validator("fields")
+    @classmethod
+    def _check_fields(cls, fields: dict[str, str]) -> dict[str, str]:
+        _only(fields, CONTACT_FIELDS, "contact")
+        if "window_state" not in fields:
+            raise ValueError("a contact rule must map window_state")
+        return fields
 
 
 class ExtraField(_Strict):
@@ -64,11 +70,30 @@ class ExtractConfig(_Strict):
     contacts: list[ContactRule]
     extras: list[ExtraField] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def _check_fields(self) -> Self:
-        _only(self.rooms, ROOM_ATTRIBUTES, "room")
-        _only(self.device_flags, DEVICE_FLAGS, "device flag")
-        return self
+    @field_validator("rooms")
+    @classmethod
+    def _check_rooms(cls, rooms: dict[str, str]) -> dict[str, str]:
+        _only(rooms, ROOM_ATTRIBUTES, "room")
+        return rooms
+
+    @field_validator("device_flags")
+    @classmethod
+    def _check_device_flags(cls, flags: dict[str, str]) -> dict[str, str]:
+        _only(flags, DEVICE_FLAGS, "device flag")
+        return flags
+
+    @field_validator("extras")
+    @classmethod
+    def _check_extras(cls, extras: list[ExtraField]) -> list[ExtraField]:
+        seen: set[tuple[str, str]] = set()
+        for extra in extras:
+            ident = (extra.scope, extra.key)
+            if ident in seen:
+                raise ValueError(
+                    f"duplicate extras entry for scope {extra.scope!r}, key {extra.key!r}"
+                )
+            seen.add(ident)
+        return extras
 
 
 class Tuning(_Strict):
