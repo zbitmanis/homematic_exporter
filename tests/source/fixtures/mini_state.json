@@ -1,0 +1,109 @@
+{
+  "home": {"id": "ID-0100", "connected": true, "location": "REDACTED"},
+  "devices": {
+    "ID-0001": {
+      "id": "ID-0001", "label": "Wall Thermostat", "modelType": "HmIP-WTH-1",
+      "serializedGlobalTradeItemNumber": "SGTIN-0001", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_OPERATIONLOCK", "groups": [],
+              "lowBat": false, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -60, "operationLockActive": false},
+        "1": {"functionalChannelType": "WALL_MOUNTED_THERMOSTAT_PRO_CHANNEL", "groups": ["ID-0201"],
+              "actualTemperature": 21.3, "setPointTemperature": 20.0, "humidity": 50, "temperatureOffset": 0.0}
+      }
+    },
+    "ID-0002": {
+      "id": "ID-0002", "label": "Temperature and Humidity Sensor with display", "modelType": "HmIP-STHD",
+      "serializedGlobalTradeItemNumber": "SGTIN-0002", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_BASE", "groups": [],
+              "lowBat": true, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -70},
+        "1": {"functionalChannelType": "WALL_MOUNTED_THERMOSTAT_PRO_CHANNEL", "groups": ["ID-0202"],
+              "actualTemperature": 19.8, "setPointTemperature": 19.0, "humidity": 45, "temperatureOffset": 0.0}
+      }
+    },
+    "ID-0003": {
+      "id": "ID-0003", "label": "Radiator Thermostat", "modelType": "HmIP-eTRV-B-2 R4M",
+      "serializedGlobalTradeItemNumber": "SGTIN-0003", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_OPERATIONLOCK", "groups": [],
+              "lowBat": false, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -55, "operationLockActive": false},
+        "1": {"functionalChannelType": "HEATING_THERMOSTAT_CHANNEL", "groups": ["ID-0202"],
+              "setPointTemperature": 19.0, "valvePosition": 0.3, "valveActualTemperature": 20.1, "valveState": "ADAPTION_DONE", "temperatureOffset": 0.0}
+      }
+    },
+    "ID-0004": {
+      "id": "ID-0004", "label": "Temperature and Humidity Sensor", "modelType": "HmIP-STH",
+      "serializedGlobalTradeItemNumber": "SGTIN-0004", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_BASE", "groups": [],
+              "lowBat": false, "unreach": true, "deviceUndervoltage": false, "rssiDeviceValue": null},
+        "1": {"functionalChannelType": "WALL_MOUNTED_THERMOSTAT_WITHOUT_DISPLAY_CHANNEL", "groups": ["ID-0203"],
+              "actualTemperature": null, "setPointTemperature": null, "humidity": null, "temperatureOffset": 0.0}
+      }
+    },
+    "ID-0005": {
+      "id": "ID-0005", "label": "Window/Door Contact with magnet", "modelType": "HmIP-SWDM-2",
+      "serializedGlobalTradeItemNumber": "SGTIN-0005", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_BASE", "groups": [],
+              "lowBat": false, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -62},
+        "1": {"functionalChannelType": "SHUTTER_CONTACT_CHANNEL", "groups": ["ID-0203"], "windowState": "CLOSED"}
+      }
+    },
+    "ID-0006": {
+      "id": "ID-0006", "label": "Floor Heating Actuator - 12 channels, motorised", "modelType": "HmIP-FALMOT-C12",
+      "serializedGlobalTradeItemNumber": "SGTIN-0006", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_BASE_FLOOR_HEATING", "groups": ["ID-0204"],
+              "lowBat": false, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -70},
+        "1": {"functionalChannelType": "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL", "groups": ["ID-0201", "ID-0201"],
+              "valvePosition": 0.1, "valveState": "ADAPTION_DONE"},
+        "2": {"functionalChannelType": "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL", "groups": ["ID-0203", "ID-0203"],
+              "valvePosition": 0.0, "valveState": "ADAPTION_DONE"},
+        "3": {"functionalChannelType": "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL", "groups": [],
+              "valvePosition": null, "valveState": null}
+      }
+    },
+    "ID-0007": {
+      "id": "ID-0007", "label": "Circulation pump switch", "modelType": "HmIP-FSM",
+      "serializedGlobalTradeItemNumber": "SGTIN-0007", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_BASE", "groups": [],
+              "lowBat": null, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -48},
+        "1": {"functionalChannelType": "SWITCH_MEASURING_CHANNEL", "groups": [], "on": null}
+      }
+    },
+    "ID-0008": {
+      "id": "ID-0008", "label": "Unmapped new device", "modelType": "HmIP-NEW-1",
+      "serializedGlobalTradeItemNumber": "SGTIN-0008", "lastStatusUpdate": 1795032304394,
+      "functionalChannels": {
+        "0": {"functionalChannelType": "DEVICE_BASE", "groups": [],
+              "lowBat": false, "unreach": false, "deviceUndervoltage": false, "rssiDeviceValue": -66}
+      }
+    }
+  },
+  "groups": {
+    "ID-0201": {
+      "id": "ID-0201", "type": "HEATING", "label": "kitchen", "controlMode": "AUTOMATIC", "windowState": null,
+      "actualTemperature": 21.3, "setPointTemperature": 20.0, "humidity": 50, "valvePosition": null,
+      "channels": [{"deviceId": "ID-0001", "channelIndex": 1}, {"deviceId": "ID-0006", "channelIndex": 1}]
+    },
+    "ID-0202": {
+      "id": "ID-0202", "type": "HEATING", "label": "bedroom", "controlMode": "MANUAL", "windowState": null,
+      "actualTemperature": 19.8, "setPointTemperature": 19.0, "humidity": 45, "valvePosition": 0.3,
+      "channels": [{"deviceId": "ID-0002", "channelIndex": 1}, {"deviceId": "ID-0003", "channelIndex": 1}]
+    },
+    "ID-0203": {
+      "id": "ID-0203", "type": "HEATING", "label": "hall", "controlMode": "AUTOMATIC", "windowState": "CLOSED",
+      "actualTemperature": null, "setPointTemperature": null, "humidity": null, "valvePosition": null,
+      "channels": [{"deviceId": "ID-0004", "channelIndex": 1}, {"deviceId": "ID-0005", "channelIndex": 1}, {"deviceId": "ID-0006", "channelIndex": 2}, {"deviceId": "ID-0008", "channelIndex": 0}]
+    },
+    "ID-0204": {
+      "id": "ID-0204", "type": "HEATING_COOLING_DEMAND_BOILER", "label": "HEATING_COOLING_DEMAND_BOILER",
+      "on": null, "heatDemand": null, "channels": [{"deviceId": "ID-0006", "channelIndex": 0}]
+    },
+    "ID-0205": {
+      "id": "ID-0205", "type": "INDOOR_CLIMATE", "label": "kitchen", "channels": []
+    }
+  }
+}
