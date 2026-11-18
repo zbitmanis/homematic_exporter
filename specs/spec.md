@@ -325,7 +325,7 @@ Validation (R19), at startup: name pattern and uniqueness, labels within the whi
 
 ## 8. Battery history algorithm (state module)
 
-Per device name, persisted as JSON under key `battery` as `{"version": 1, "records": {name: {room, device_type, low_since, last_replaced, last_seen_day}}}`. `last_seen_day` (UTC date, day granularity) is internal to `state`; `BatteryRecord` has no such field. A change in `room` or `device_type` counts as a changed record (a save). A missing or unknown `version` means an unknown format: history starts empty. A malformed record (wrong types, non-finite or out-of-range numbers: timestamps outside 1970..2100, `last_seen_day` outside 2000-01-01..2100-12-31) is dropped with a warning and the rest are kept.
+Per device name, persisted as JSON under key `battery` as `{"version": 1, "records": {name: {room, device_type, low_since, last_replaced, last_seen_day}}}`. `last_seen_day` (UTC date, day granularity) is internal to `state`; `BatteryRecord` has no such field. A change in `room` or `device_type` counts as a changed record (a save). A missing or unknown `version` means an unknown format: history starts empty. A malformed record (wrong types, non-finite or out-of-range numbers: timestamps outside 1970-01-01..2100-01-01 (`0`..`4102444800`), `last_seen_day` outside 1970-01-01..2100-12-31) is dropped with a warning and the rest are kept.
 
 For each device passed to `update`, in order:
 1. **No record yet:** create one on first sight, for every device regardless of its flags; `low_since = now` only if `low_battery` is true and the device is reachable (approximate start, see C3); otherwise both timestamps are `None`. Only `unreachable is True` counts as unreachable: `None` (unknown) counts as reachable, also on first sight.
