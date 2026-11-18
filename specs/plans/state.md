@@ -31,7 +31,7 @@ gate output plus the transition table covered by tests; no secrets or paths in e
 
 ## Closing review task (mandatory, last task of this plan; specs/plan.md section A)
 The PR is not opened until every step is done or marked n/a with a reason. Paste each verdict into the PR description. After any HIGH/CRITICAL fix the same reviewer re-checks.
-- [ ] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
+- [x] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
 - [ ] R2 `python-reviewer`
 - [ ] R3 `code-reviewer`
 - [ ] R4 `security-reviewer`
