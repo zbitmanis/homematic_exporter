@@ -9,7 +9,7 @@ Package root: `src/homematic_exporter/`. One agent owns one module per worktree.
 | Module | Path | Owns | Public interface | Depends on | Proof |
 |---|---|---|---|---|---|
 | contracts | `contracts.py`, `config_models.py`, `redact.py` | `Snapshot` and entity types, `Source`/`StateStore` protocols, `NameCollisionError`, `ExtractConfig`/`Tuning` config models, `scrub` | the types and `scrub` themselves | pydantic (config models only) | mypy, `tests/test_contracts.py`, `test_config_models.py`, `test_redact.py`, `test_import_boundaries.py`; changes need a spec change and their own PR |
-| source | `source/` | Homematic IP client (cloud first, CCU later), `parse_snapshot` | implements `Source.fetch() -> Snapshot` (async); `parse_snapshot(raw, now, extract, on_collision)` | contracts (token via env) | `tests/source/` fixtures, no network |
+| source | `source/` | Homematic IP client (cloud first, CCU later), `parse_snapshot` | implements `Source.fetch(on_collision) -> Snapshot` (async); `parse_snapshot(raw, now, extract, on_collision)` | contracts (token via env) | `tests/source/` using the shared `tests/fixtures/mini_state.json`, no network |
 | state | `state/` | Battery history on the volume | `FileStateStore` implements `StateStore` (0700/0600); `BatteryHistory(store, tuning).update(devices, now)` | contracts | `tests/state/` tmp_path tests incl. permissions |
 | metrics | `metrics/` | `config.yaml` schema/validation, metric definitions -> prometheus objects | `load_config`, `Registry.build/update/record_success/record_error/exposition`, `render(config, snapshot, batteries)` | contracts | golden exposition from a hand-built `Snapshot` (the fixture-through-parser golden test is task 4) |
 | app | `app/` | FastAPI, poll loop, env config, logging filter | `create_app(*, settings=None, config=None, source=None, store=None) -> FastAPI` (env defaults); `/metrics /health /status` | contracts; concrete implementations only in `app/wiring.py` | fake Source, loop-error survival, clean shutdown |
@@ -18,7 +18,7 @@ Machine-readable ownership: `.claude/ownership.yaml`, enforced by the `ownership
 
 Dependency direction: `app` wires concrete `source`, `state`, `metrics` and depends only on `contracts` types. Other modules never import each other's concrete classes.
 
-Parallel-safe split: land `contracts.py` first (small, human-reviewed); then source, state and metrics are built simultaneously; app against fakes; e2e last.
+Parallel-safe split: the shared contracts (`contracts.py`, `config_models.py`, `redact.py`) are done and human-reviewed; (small, human-reviewed); then source, state and metrics are built simultaneously; app against fakes; e2e last.
 
 ## 2. Dependency SBOM
 
@@ -37,14 +37,14 @@ Resolved and pinned 2026-11-18 in `requirements.txt` / `requirements-dev.txt` (r
 | fastapi | 0.165.0 | web app | app | MIT | pulls starlette, pydantic |
 | uvicorn | 0.54.0 | ASGI server | app | BSD-3 | single `CMD` |
 | prometheus_client | 0.26.0 | metric objects, exposition | metrics, app | Apache-2.0 / BSD-2 | |
-| pydantic | see `requirements.txt` | config models and validation (imported directly by `config_models.py`) | contracts, metrics | MIT | direct import; pinned transitively via fastapi |
+| pydantic | see `requirements.txt` | config models and validation (imported directly by `config_models.py`) | contracts, metrics | MIT | direct import; pinned directly in `requirements.txt` (also pulled in by fastapi) |
 | PyYAML | 6.0.3 | metric config | metrics | MIT | `safe_load` only |
 | homematicip | 2.23.1 | HmIP cloud API client | source | **GPL-3.0-or-later** | spike: `docs/spikes/homematicip-spike.md`; needs Python >=3.12; pulls aiohttp, httpx2, opentelemetry-api |
 | httpx, pytest, pytest-asyncio | 0.28.1 / 9.2.0 / 1.5.0 | tests | all | BSD / MIT | dev only |
 | ruff, mypy, types-PyYAML | 0.17.5 / 2.4.1 / see file | lint, format, types | all | MIT | dev only |
 | pip-audit, pip-licenses, cyclonedx-bom | see file | supply-chain tooling | CI | Apache-2.0 / MIT | dev only |
 
-Transitive runtime dependencies (29 packages in total) are listed in the generated SBOM. Other licences seen: PSF (typing_extensions, aiohappyeyeballs), MPL-2.0 (certifi), Apache-2.0 (aiohttp, multidict, yarl, frozenlist, propcache, opentelemetry-api).
+Runtime dependencies (29 pinned packages in total, direct and transitive) are listed in the generated SBOM. Other licences seen: PSF (typing_extensions, aiohappyeyeballs), MPL-2.0 (certifi), Apache-2.0 (aiohttp, multidict, yarl, frozenlist, propcache, opentelemetry-api).
 
 ### Licence decision (updated 2026-11-18)
 `homematicip` is GPL-3.0-or-later, outside the allowlist. **Decision (owner): this repository is licensed MIT, and the GPL dependency is accepted.** Consequences:

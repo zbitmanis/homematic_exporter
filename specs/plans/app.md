@@ -8,6 +8,7 @@
 | Path | Change |
 |---|---|
 | `src/homematic_exporter/app/` | `create_app(...)`, settings from env, `wiring.py` (only place importing concrete implementations), poll task in the lifespan, routes `/metrics` `/health` `/status`, logging filter built on `redact.scrub` |
+| `src/homematic_exporter/app/settings.py` (or equivalent) | reads the environment, incl. `CONFIG_FILE` and `APP_VERSION` (passed to `Registry.build` as `version`) |
 | `src/homematic_exporter/app/ports.py` | local Protocols for the registry (`update`, `record_success`, `record_error`, `exposition`), battery history and config (`extract`, `tuning`) |
 | `tests/app/`, `tests/e2e/` | fake `Source` (honours `on_collision`); `SOURCE_KIND=file` e2e; restart with the same `STATE_DIR`; startup collision exits non-zero |
 

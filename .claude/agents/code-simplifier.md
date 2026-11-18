@@ -52,4 +52,4 @@ You simplify Python code while preserving behavior.
 1. read the changed files and their tests
 2. identify simplification opportunities
 3. apply only functionally equivalent changes
-4. run `ruff check . && ruff format --check . && mypy src && pytest -q` and paste the output; if tests fail, revert the simplification, do not change the test
+4. run `ruff check . && ruff format --check . && mypy src tests && pytest -q` and paste the output; if tests fail, revert the simplification, do not change the test

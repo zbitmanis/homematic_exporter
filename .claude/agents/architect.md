@@ -18,7 +18,7 @@ You are a senior software architect for small, operable services. This project i
 
 ## Your Role
 
-- Design module boundaries and interfaces (`contracts.py` protocols)
+- Design module boundaries and interfaces (`contracts.py` (+ `config_models.py`, `redact.py`) protocols and the other shared contracts (`config_models.py`, `redact.py`))
 - Evaluate technical trade-offs and record them as short ADRs
 - Keep the design consistent with `intent/`, `specs/` and `docs/sbom/components.md`
 - Identify operability risks (staleness, cardinality, restarts, upstream outages)
@@ -32,7 +32,7 @@ You are a senior software architect for small, operable services. This project i
 
 ## Architectural Principles for this project
 
-- **Modularity** — `source`, `state`, `metrics`, `app` behind `contracts.py` protocols; one owner per module; depend on protocols, not concrete classes.
+- **Modularity** — `source`, `state`, `metrics`, `app` behind `contracts.py` (+ `config_models.py`, `redact.py`) protocols; one owner per module; depend on protocols, not concrete classes.
 - **Cache-only scrapes** — a poll task updates metrics; `/metrics` never calls the source.
 - **Config-driven mapping** — a mounted `config.yaml` maps raw fields, channel types and model names, and defines metrics (name, type, labels, unit, scale, transform); structure (joins, naming, battery history) stays in code; adding a metric needs no code change.
 - **Config from environment** — every URL, path, port and interval is an env var with a default.

@@ -6,8 +6,9 @@ from homematic_exporter.redact import REDACTED, scrub
 
 
 def test_secrets_are_replaced_longest_first() -> None:
-    out = scrub("token abc123 and abc", secrets=["abc", "abc123"])
-    assert "abc" not in out and out.count(REDACTED) == 2
+    assert (
+        scrub("see abc123 and abc", secrets=["abc", "abc123"]) == f"see {REDACTED} and {REDACTED}"
+    )
 
 
 def test_empty_secrets_are_ignored() -> None:
@@ -41,9 +42,10 @@ def test_harmless_text_is_unchanged() -> None:
     assert scrub(text) == text
 
 
-def test_idempotent_and_safe_on_odd_input() -> None:
-    once = scrub("authToken=abc", secrets=["abc"])
-    assert scrub(once, secrets=["abc"]) == once
+def test_idempotent_on_every_leak_shape_and_safe_on_odd_input() -> None:
+    for text in LEAK_SHAPES:
+        once = scrub(text)
+        assert scrub(once) == once, text
     assert scrub("") == ""
     assert scrub("\x00\n\t ünïcode") == "\x00\n\t ünïcode"
 
@@ -93,3 +95,71 @@ def test_large_inputs_are_fast() -> None:
         start = time.perf_counter()
         scrub(big)
         assert time.perf_counter() - start < 1.0
+
+
+LEAK_SHAPES = [
+    "{'authToken': 'abc123'}",
+    "Authorization: Basic dXNlcjpwYXNz",
+    "token=abc123 pin=1234",
+    "{'clientAuthToken': 'abc123'}",
+    "Cookie: session=abc123; other=1",
+]
+
+
+@pytest.mark.parametrize(
+    ("text", "leak"),
+    [
+        ("{'clientAuthToken': 'abc123'}", "abc123"),
+        ('{"clientAuthToken":"abc123"}', "abc123"),
+        ("clientAuthToken=abc123", "abc123"),
+        ("userPassword=abc123", "abc123"),
+        ("{'password_hash':'abc123'}", "abc123"),
+        ("secret_key=abc123", "abc123"),
+        ("x-client-auth-token: abc123", "abc123"),
+        ("url?token%3Dabc123&x=1", "abc123"),
+        ("auth%5Ftoken%3Dabc123", "abc123"),
+        ("auth%5Ftoken=abc123", "abc123"),
+        ("Cookie: session=abc123; other=xyz789", "xyz789"),
+        ("Set-Cookie: sid=abc123; Path=/; HttpOnly", "abc123"),
+        ("headers={'cookie': 'a=abc123'}", "abc123"),
+        ('Authorization: Digest username="bob", response="abc123"', "bob"),
+        ('token = "unterminated abc123', "abc123"),
+        ("{'password': 'unterminated abc123", "abc123"),
+        ("PIN 123456", "123456"),
+        ("the PIN is 123456 and wrong", "123456"),
+    ],
+)
+def test_second_round_leak_shapes_are_redacted(text: str, leak: str) -> None:
+    assert leak not in scrub(text)
+
+
+@pytest.mark.parametrize(
+    ("secret", "text"),
+    [
+        ("s3cr3t!", "GET /x?k=s3cr3t%21"),
+        ("a b+c/d", "GET /x?k=a+b%2Bc%2Fd"),
+        ("a b+c/d", "GET /x?k=a%20b%2Bc%2Fd"),
+        ("s3cr3t", "value S3CR3T here"),
+        ("s3cr3t-token", "b64 czNjcjN0LXRva2Vu"),
+    ],
+)
+def test_secrets_argument_also_catches_encoded_and_case_variants(secret: str, text: str) -> None:
+    out = scrub(text, secrets=[secret])
+    assert REDACTED in out
+
+
+def test_known_limits_are_pinned() -> None:
+    # An unquoted credential value ends at whitespace: quote values that contain spaces.
+    assert scrub("token: abc def") == f"token: {REDACTED} def"
+    # Words that merely contain a credential word as part of another word are left alone.
+    assert (
+        scrub("mapping: ok, spinning: yes, author=bob") == "mapping: ok, spinning: yes, author=bob"
+    )
+
+
+@pytest.mark.parametrize("chunk", ["a-", "token", "%41", "x_", "pin ", "Token=", "'\\", "a=b;"])
+def test_pathological_inputs_stay_fast(chunk: str) -> None:
+    big = chunk * (100_000 // len(chunk))
+    start = time.perf_counter()
+    scrub(big, secrets=["abc", "s3cr3t!"])
+    assert time.perf_counter() - start < 2.0

@@ -15,7 +15,7 @@ A single-replica Python service. A background task downloads the Homematic IP co
                                                                      |
         SOURCE_KIND=file (JSON file) --------------------------------+
                                                                      v
-   source/parser.parse_snapshot(raw) --> Snapshot ---> app poll loop ---> state.BatteryHistory (volume)
+   source/parser.parse_snapshot(raw, now, extract, on_collision) --> Snapshot ---> app poll loop ---> state.BatteryHistory (volume)
                                                               |                 |
                                                               +--> metrics.Registry.update(snapshot, batteries)
  Prometheus --> GET /metrics (cache only) <-------------------+
@@ -119,7 +119,8 @@ class UpstreamError(Exception):            # status, body (scrubbed by the raise
     body: str
 
 class Source(Protocol):
-    async def fetch(self) -> Snapshot: ...  # raises UpstreamError
+    async def fetch(self, on_collision: CollisionPolicy = "error") -> Snapshot: ...
+    # raises UpstreamError (upstream failure) or NameCollisionError (on_collision="error")
 
 class StateStore(Protocol):
     def load(self, key: str) -> dict | None: ...
@@ -136,7 +137,7 @@ class StateStore(Protocol):
 |---|---|---|
 | `source` | `CloudSource(access_point, token, timeout, extract)`, `FileSource(path, extract)`, `parse_snapshot(raw: dict, now: float, extract: ExtractConfig, on_collision: CollisionPolicy = "error") -> Snapshot`; both sources implement `Source.fetch(on_collision: CollisionPolicy = "error") -> Snapshot` | Cloud uses `homematicip` `AsyncHome.init_async` + `download_configuration_async()` and parses the **raw JSON** itself, so tests need only the fixture and the library's object model is not a dependency of the parser. `FileSource` reads the same JSON (e2e, demos). `on_collision="error"` raises `NameCollisionError`; `"suffix"` appends `-2`, `-3` ordered by SGTIN and the **source logs one WARNING per new collision** (device names only, via a module logger). `app` chooses the policy per poll (below). Upstream failures raise `UpstreamError` with a body scrubbed by `redact.scrub`. |
 | `state` | `FileStateStore(dir)`, `BatteryHistory(store: StateStore, tuning: Tuning)`, `BatteryHistory.update(devices: Sequence[Device], now: float) -> list[BatteryRecord]` | History logic (R12-R14, section 8) lives here; depends only on `contracts` and `config_models`. Returns records **only for devices in the given list** (R8); records of absent devices stay stored until pruned. |
-| `metrics` | `load_config(path: Path | None = None) -> AppConfig` (schema, validation, R19-R21; never reads the environment), `Registry.build(metric_defs, tuning)`, `Registry.update(snapshot, batteries)`, `Registry.record_success(timestamp, duration)`, `Registry.record_error()`, `Registry.exposition() -> bytes`, `render(config, snapshot, batteries=()) -> bytes` | Pure; one private `CollectorRegistry`. Owns the config schema (pydantic v2, `extra=forbid`) and **all** metrics including derived (6.5) and meta (6.6): `app` only calls `record_success`/`record_error`. `homematic_data_age_seconds` has no series until the first `record_success`. `render` builds a registry, updates it and returns the exposition: golden tests use a hand-built `Snapshot`. `source` and `state` receive their config sections as typed objects. |
+| `metrics` | `load_config(path: Path | None = None) -> AppConfig` (schema, validation, R19-R21; never reads the environment), `Registry.build(metric_defs, tuning, version="dev")`, `Registry.update(snapshot, batteries)`, `Registry.record_success(timestamp, duration)`, `Registry.record_error()`, `Registry.exposition() -> bytes`, `render(config, snapshot, batteries=(), version="dev") -> bytes` | Pure; one private `CollectorRegistry`. Owns the config schema (pydantic v2, `extra=forbid`) and **all** metrics including derived (6.5) and meta (6.6): `app` only calls `record_success`/`record_error`. `homematic_data_age_seconds` has no series until the first `record_success`. `render` builds a registry, updates it and returns the exposition: golden tests use a hand-built `Snapshot`. `source` and `state` receive their config sections as typed objects. |
 | `app` | `create_app(*, settings=None, config=None, source=None, store=None) -> FastAPI` | All parameters default to values derived from the environment, so `uvicorn --factory homematic_exporter.app:create_app` works with no arguments; tests inject fakes. `app/wiring.py` is the only place that imports concrete `source`, `state` and `metrics` implementations; the rest of `app` uses protocols defined locally in `app/ports.py` (`RegistryPort`, `BatteryPort`, `ConfigPort` exposing `extract` and `tuning`), enforced by `tests/test_import_boundaries.py`. Lifespan owns the poll task, calls `record_success`/`record_error`, installs a logging filter built on `redact.scrub` (secrets from settings), and calls `source.fetch(on_collision=...)` with `"error"` until the first successful poll, then `"suffix"` (C1). Reads `CONFIG_FILE` and passes it to `load_config`. |
 | tools (`check_config.py`, `generate_config.py`, top-level) | `python -m homematic_exporter.check_config`, `python -m homematic_exporter.generate_config` | Task 4 and 5. May import every module; not part of the runtime path. Own the fixture-to-exposition integration golden test. |
 
@@ -168,7 +169,7 @@ The **structure** below is code; every raw name, channel type and label shown is
 | `CONFIG_FILE` | unset | see R21: explicit path (must exist), else `/etc/homematic-exporter/config/config.yaml`, else the bundled default |
 | `LISTEN_HOST` / `LISTEN_PORT` | `0.0.0.0` / `9100` | |
 | `LOG_LEVEL` | `INFO` | |
-| `APP_VERSION` | `dev` | label of `homematic_exporter_build_info`; set by the image build |
+| `APP_VERSION` | `dev` | read by `app`, passed as `version` to `Registry.build`; label of `homematic_exporter_build_info`; set by the image build |
 | `DEBUG_ROUTES` | `false` | enables `/status` (counts, last poll info, no secrets) |
 
 ### 5.1 `config.yaml` (mounted read-only; default bundled in the image)
@@ -302,7 +303,7 @@ Validation (R19), at startup: name pattern and uniqueness, labels within the whi
 | `homematic_data_age_seconds` | gauge (custom collector) | now minus the above; no series before the first success |
 | `homematic_poll_duration_seconds` | gauge | duration of the last poll |
 | `homematic_poll_errors_total` | counter | failed polls |
-| `homematic_exporter_build_info` | gauge, label `version` | constant 1; `version` comes from env `APP_VERSION` (default `dev`), which the image build sets from the release version (task 4) |
+| `homematic_exporter_build_info` | gauge, label `version` | constant 1; `version` is the `version` argument of `Registry.build`/`render`; `app` reads env `APP_VERSION` (default `dev`), which the image build sets from the release version (task 4) |
 
 ### 6.7 Cardinality (captured installation)
 12 rooms x 5 + 20 devices x 6 + 15 valves x 2 + 1 contact + ~10 derived/meta, about 230 series. A change that multiplies this needs justification in its PR.

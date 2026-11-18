@@ -10,8 +10,8 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - Types: `mypy src tests` (expect "Success: no issues found")
 - Ownership: `python scripts/check_ownership.py --base origin/main --branch $(git branch --show-current)` (expect `ownership ok`)
 - Audit: `pip-audit -r requirements.txt` and `python scripts/check_licenses.py` (licence allowlist; expect `homematicip` listed as EXCEPTION)
-- E2E: `pytest -m e2e tests/e2e`
-- Run: `uvicorn homematic_exporter.app:create_app --factory --port 9100`
+- E2E: `pytest -m e2e tests/e2e` (after task 3; no e2e tests yet)
+- Run: `uvicorn homematic_exporter.app:create_app --factory --port 9100` (after task 3; `create_app` does not exist yet)
 
 ## Architecture
 - Modules under `src/homematic_exporter/`: `source`, `state`, `metrics`, `app`. Shared contracts: `contracts.py`, `config_models.py`, `redact.py` (scrub). Modules never import each other (`tests/test_import_boundaries.py`).
@@ -50,7 +50,7 @@ Run tests, lint and types before reporting any task complete, and paste the outp
 - Calling the source inside the `/metrics` handler.
 - Letting an exception in the poll loop end the task; catch, log the body, count it (but let `CancelledError` propagate).
 - Blocking the event loop with sync I/O inside async code.
-- Assuming Homematic field names without the captured fixture (`tests/source/fixtures/state.scrubbed.json`, git-ignored, local only). Tests must use a small hand-written fixture derived from it, never the full dump.
+- Assuming Homematic field names without the captured fixture (`tests/source/fixtures/state.scrubbed.json`, git-ignored, local only). Tests use the shared hand-written fixture `tests/fixtures/mini_state.json`, never the full dump.
 - Adding debug routes that are on by default.
 - Inspecting or resolving a package with an interpreter that differs from `.python-version` (host Python 3.9 once resolved homematicip 1.1.5 instead of 2.x); record Python and resolved version in the spike header.
 - Adding a dependency or pasting external code without checking its licence and updating the SBOM / `THIRD_PARTY_NOTICES.md`.

@@ -6,7 +6,7 @@ Imported from everything-claude-code (MIT; attribution and licence in `THIRD_PAR
 
 | Agent | Model | Role in this project | Stage |
 |---|---|---|---|
-| architect | sonnet | Design of module boundaries and `contracts.py`; ADRs for open questions (HmIP client choice) | Design |
+| architect | sonnet | Design of module boundaries and the shared contracts (`contracts.py`, `config_models.py`, `redact.py`); ADRs for open questions (HmIP client choice) | Design |
 | chief-of-staff | haiku | Rewritten: coordinator of parallel module worktrees; no messaging | Plan/Build |
 | implementer | sonnet | Builds one module, tests first (project agent) | Build |
 | python-build-resolver | sonnet | **New (not in ECC):** fixes ruff, mypy and pytest-collection failures with minimal diffs | Build |
@@ -38,9 +38,9 @@ Suggested flow per module: `architect` → `implementer` → `python-build-resol
 ## Deployment harness
 
 - **Image:** multi-stage Dockerfile (build wheels in a builder, copy into `python:3.12-slim`), non-root user, single `CMD ["uvicorn", "homematic_exporter.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "9100"]`, `HEALTHCHECK` using Python's `urllib` against `/health` (no curl in slim).
-- **Config:** env vars only (`LISTEN_ADDR`, `POLL_INTERVAL`, `STATE_DIR`, `METRICS_CONFIG`, `HMIP_*`). Under systemd/podman pass explicitly (`-e VAR=${VAR}`) and verify with `printenv`.
+- **Config:** env vars only (`LISTEN_HOST`, `LISTEN_PORT`, `POLL_INTERVAL_SECONDS`, `STATE_DIR`, `CONFIG_FILE`, `APP_VERSION`, `HMIP_*`: see spec section 5). Under systemd/podman pass explicitly (`-e VAR=${VAR}`) and verify with `printenv`.
 - **Podman Quadlet** (`deploy/homematic-exporter.container`): single replica, state volume mounted 0700, read-only root fs, `--cap-drop=ALL`, publish `9100` on the internal network only.
-- **CI (GitHub Actions):** see intent section "CI/CD and image delivery" (multi-arch arm64+amd64, Docker Hub, PR tags). Summary: `ruff`, `mypy`, `pytest`, `pip-audit`, build image, generate CycloneDX SBOM, sign (cosign) and push; fail on SBOM/`go.mod` drift. Agent evals as a scheduled job.
+- **CI (GitHub Actions):** see intent section "CI/CD and image delivery" (multi-arch arm64+amd64, Docker Hub, PR tags). Summary: `ruff`, `mypy`, `pytest`, `pip-audit`, build image, generate CycloneDX SBOM, push; **planned:** sign (cosign), fail on SBOM/`requirements.txt` drift. Agent evals as a scheduled job.
 - **Release:** tag → image + SBOM attached. Production deploy gated by a human approval; the agent that wrote the code cannot approve it.
 - **Observability:** Prometheus alerts: stale data (`time() - homematic_last_successful_poll_timestamp_seconds > 300`), `rate(homematic_poll_errors_total[10m]) > 0`, any `homematic_device_low_battery == 1` ("prepare charged accumulators"), `homematic_device_unreachable == 1` for 15m.
 
@@ -52,10 +52,12 @@ homematic_exporter/
 ├── REVIEW.md
 ├── pyproject.toml                 ruff, mypy, pytest config
 ├── requirements.txt / requirements-dev.txt   pinned
-├── Makefile                       test, lint, types, audit, sbom, e2e
+├── Makefile                       (planned) test, lint, types, audit, sbom, e2e
 ├── config/default-config.yaml     default mapping + metric definitions (bundled; mounted override at /etc/homematic-exporter/config/)
 ├── src/homematic_exporter/
 │   ├── contracts.py               Snapshot, Source, StateStore protocols
+│   ├── config_models.py           ExtractConfig, Tuning (shared config models)
+│   ├── redact.py                  scrub() (shared credential scrubbing)
 │   ├── source/        (+CLAUDE.md)
 │   ├── state/         (+CLAUDE.md)
 │   ├── metrics/       (+CLAUDE.md)
@@ -64,7 +66,8 @@ homematic_exporter/
 ├── intent/homematic-exporter.intent.md
 ├── specs/{README.md,spec.md,plan.md}
 ├── docs/{harness.md,sbom/{components.md,sbom.cdx.json}}
-├── deploy/{Dockerfile,homematic-exporter.container,prometheus-alerts.yml}
+├── Dockerfile                     (exists, repo root)
+├── deploy/{homematic-exporter.container,prometheus-alerts.yml}   (planned, task 4)
 ├── evals/                         agent evals + check.sh
 ├── .github/workflows/{ci.yml,agent-evals.yml,release.yml}
 └── .claude/{settings.json,hooks/,agents/,rules/{common,python}/}
