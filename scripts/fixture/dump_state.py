@@ -18,7 +18,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-SGTIN_RE = re.compile(r"\b[0-9A-F]{24}\b")
+SGTIN_RE = re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{24}(?![0-9A-Za-z])")
 UUID_RE = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )

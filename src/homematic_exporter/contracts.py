@@ -1,12 +1,15 @@
 """Shared contracts between modules (spec section 3).
 
-This file and `config_models.py` are the only things modules may share. Changing either requires a
-`specs/spec.md` change in the same commit.
+This file, `config_models.py` and `redact.py` are the only things modules may share. Changing any
+of them requires a `specs/spec.md` change in the same commit, in its own small PR merged first.
+
+Note: the dataclasses are frozen but hold a mapping in `extras`, so they are not hashable; do not
+put them in sets or use them as dict keys (key by name instead).
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 # Config-defined raw fields (extract.extras), keyed by the configured key.
 Extras = Mapping[str, float | str | bool | None]
@@ -84,10 +87,28 @@ class UpstreamError(Exception):
         self.body = body
 
 
+# How a source treats two devices with the same name in one room (spec C1): `error` raises
+# NameCollisionError (the app uses it until the first successful poll, i.e. startup); `suffix`
+# appends -2, -3 ordered by SGTIN and the source logs one WARNING per new collision (names only).
+CollisionPolicy = Literal["error", "suffix"]
+
+
+class NameCollisionError(Exception):
+    """Two or more devices would get the same name."""
+
+    def __init__(self, names: Sequence[str]) -> None:
+        super().__init__(f"device name collision: {', '.join(sorted(names))}")
+        self.names = tuple(sorted(names))
+
+
 @runtime_checkable
 class Source(Protocol):
-    async def fetch(self) -> Snapshot:
-        """Return the current snapshot; raise UpstreamError on upstream failure."""
+    async def fetch(self, on_collision: CollisionPolicy = "error") -> Snapshot:
+        """Return the current snapshot.
+
+        Raises UpstreamError on upstream failure and NameCollisionError when `on_collision` is
+        "error" and device names collide.
+        """
         ...
 
 

@@ -1,12 +1,15 @@
 import dataclasses
+import inspect
 from collections.abc import Mapping
 
 import pytest
 
 from homematic_exporter.contracts import (
     BatteryRecord,
+    CollisionPolicy,
     Contact,
     Device,
+    NameCollisionError,
     Room,
     Snapshot,
     Source,
@@ -103,7 +106,7 @@ def test_upstream_error_carries_status_and_body() -> None:
 
 def test_protocols_are_runtime_checkable() -> None:
     class FakeSource:
-        async def fetch(self) -> Snapshot:
+        async def fetch(self, on_collision: CollisionPolicy = "error") -> Snapshot:
             return Snapshot(0.0, (), (), (), ())
 
     class FakeStore:
@@ -116,3 +119,26 @@ def test_protocols_are_runtime_checkable() -> None:
     assert isinstance(FakeSource(), Source)
     assert isinstance(FakeStore(), StateStore)
     assert not isinstance(object(), Source)
+
+
+def test_source_fetch_is_a_coroutine_function() -> None:
+    assert inspect.iscoroutinefunction(Source.fetch)
+    assert not inspect.iscoroutinefunction(StateStore.load)
+
+
+def test_field_types_are_none_tolerant() -> None:
+    hints = {f.name: str(f.type) for f in dataclasses.fields(Device)}
+    for name in ("low_battery", "unreachable", "undervoltage", "rssi_dbm"):
+        assert "None" in hints[name]
+    assert "None" in {f.name: str(f.type) for f in dataclasses.fields(Room)}["temperature_celsius"]
+
+
+def test_entities_with_extras_are_not_hashable() -> None:
+    with pytest.raises(TypeError):
+        hash(make_room())
+
+
+def test_name_collision_error_lists_sorted_names() -> None:
+    err = NameCollisionError(["b room x", "a room x"])
+    assert err.names == ("a room x", "b room x")
+    assert "a room x, b room x" in str(err)
