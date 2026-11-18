@@ -28,8 +28,18 @@ gate output, e2e output, `verifier` run.
 - Outside `app/wiring.py`, import only `contracts`, `config_models`, `redact` and your own `app/ports.py` Protocols; `wiring.py` and `tests/e2e/` may import the concrete modules (`tests/test_import_boundaries.py`).
 - Tests first; paste gate output (`ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`).
 
-## Review pipeline (specs/plan.md)
-- [ ] R1 gate  - [ ] R2 python-reviewer + fastapi-reviewer  - [ ] R3 security-reviewer  - [ ] R4 code-simplifier (optional)  - [ ] R6 owner PR review
+## Closing review task (mandatory, last task of this plan; specs/plan.md section A)
+The PR is not opened until every step is done or marked n/a with a reason. Paste each verdict into the PR description. After any HIGH/CRITICAL fix the same reviewer re-checks.
+- [ ] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
+- [ ] R2 `python-reviewer` + `fastapi-reviewer`
+- [ ] R3 `code-reviewer`
+- [ ] R4 `security-reviewer`
+- [ ] R5 `architect`: required
+- [ ] R6 `code-simplifier` (after R2-R5 are clean; gate re-run)
+- [ ] R7 `performance-optimizer`: required: poll duration, memory soak, series count
+- [ ] R8 required: `verifier` runs the app; `e2e-runner` runs failure, restart and container scenarios
+- [ ] R9 `doc-updater`: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
+- [ ] R10 owner PR review and squash merge
 
 ## Requests (to the coordinator)
 _none yet_

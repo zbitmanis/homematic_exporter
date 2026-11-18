@@ -21,7 +21,7 @@ Imported from everything-claude-code (MIT; attribution and licence in `THIRD_PAR
 | doc-updater | haiku | Keeps CLAUDE.md, SBOM manifest, harness and spec catalogue in sync after merges (documentation only) | Maintain |
 | harness-optimizer | sonnet | Tunes this harness (CLAUDE.md, hooks, agents) from eval results | Maintain |
 
-Review phases, statuses and the review log are tracked in `specs/plan.md` (pipeline R1-R6, phase reviews P1-P8).
+Review phases, statuses and the review log are tracked in `specs/plan.md` (closing review task R1-R10 at the end of every plan, phase reviews P1-P8).
 
 Suggested flow per module: `architect` → `implementer` → `python-build-resolver` (if needed) → `code-simplifier` → `python-reviewer` + `code-reviewer` + `security-reviewer` → `verifier` / `e2e-runner`. The author never approves its own change.
 

@@ -36,6 +36,7 @@ Prometheus exporter: polls Homematic IP, caches values, serves `/metrics`. Read 
 - Dependency changes require an SBOM update (`docs/sbom/`), a licence check against the allowlist, and human sign-off. Do not bump versions.
 - Licensing: repo is MIT; `homematicip` is GPL-3.0 (accepted exception). Never copy external code/agents/docs without a recorded licence and an entry in `THIRD_PARTY_NOTICES.md`. Do not edit `LICENSE` or `THIRD_PARTY_NOTICES.md` without owner approval. See the intent's Licensing section.
 - Bug fix = failing test first, committed before the fix.
+- Every plan ends with the **closing review task** (`specs/plan.md` section A, steps R1-R10: python/fastapi, code, security, architecture, simplify, performance, verify/e2e, docs, owner). Do not open the PR until it is complete; paste each verdict into the PR description.
 - Git: never commit on `main`; no Co-Authored-By footer. Branch as `feat/<name>` or `fix/<name>`; commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:` ...).
 - Agents: `python-reviewer` (+ `fastapi-reviewer` for `app/`) and `security-reviewer` on every change; `python-build-resolver` when the gate fails; see `docs/harness.md`.
 
