@@ -45,10 +45,19 @@ def module_for_branch(branch: str, modules: Iterable[str]) -> str | None:
     return None
 
 
+_PLAIN = re.compile(r"^[A-Za-z0-9_./][A-Za-z0-9_./-]*$")
+_YAML11_WORDS = {"y", "n", "yes", "no", "on", "off", "null", "~", "true", "false"}
+
+
 def _strip_comment(text: str) -> str:
     """Drop a trailing `# comment` that sits outside quotes (a `#` must follow whitespace)."""
     quote = ""
-    for i, ch in enumerate(text):
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote == '"' and ch == "\\":
+            i += 2
+            continue
         if quote:
             if ch == quote:
                 quote = ""
@@ -56,10 +65,12 @@ def _strip_comment(text: str) -> str:
             quote = ch
         elif ch == "#" and (i == 0 or text[i - 1] in " \t"):
             return text[:i].rstrip()
+        i += 1
     return text.rstrip()
 
 
 def _scalar(text: str) -> Any:
+    """Quoted strings, ASCII integers, lowercase true/false and simple plain words only."""
     t = text.strip()
     if not t:
         return None
@@ -68,7 +79,9 @@ def _scalar(text: str) -> Any:
         out, i = "", 1
         while i < len(t):
             ch = t[i]
-            if q == '"' and ch == "\\" and i + 1 < len(t):
+            if q == '"' and ch == "\\":
+                if t[i + 1 : i + 2] not in ('"', "\\"):
+                    raise ValueError(f'only \\" and \\\\ escapes are supported: {text!r}')
                 out += t[i + 1]
                 i += 2
             elif ch == q:
@@ -83,11 +96,24 @@ def _scalar(text: str) -> Any:
                 out += ch
                 i += 1
         raise ValueError(f"unterminated quote: {text!r}")
-    if t.lower() in ("true", "false"):
-        return t.lower() == "true"
-    if t in ("null", "~"):
-        return None
-    return int(t) if t.isdigit() else t
+    if t in ("true", "false"):
+        return t == "true"
+    if t[0] in "+-" or t[0].isdigit():
+        if re.fullmatch(r"[0-9]+", t):  # ASCII digits only
+            return int(t)
+        raise ValueError(f"unsupported number or token {text!r}; quote it if it is a string")
+    if t.lower() in _YAML11_WORDS:
+        raise ValueError(f"ambiguous plain scalar {text!r}; quote it")
+    if not _PLAIN.match(t):
+        raise ValueError(f"unsupported plain scalar {text!r}; use a quoted string")
+    return t
+
+
+def _key(text: str) -> str:
+    k = text.strip()
+    if not _PLAIN.match(k):
+        raise ValueError(f"unsupported key {text!r}")
+    return k
 
 
 def _flow_list(text: str) -> list[Any]:
@@ -95,6 +121,8 @@ def _flow_list(text: str) -> list[Any]:
     if not (inner.startswith("[") and inner.endswith("]")):
         raise ValueError(f"unterminated flow list: {text!r}")
     inner = inner[1:-1]
+    if not inner.strip():
+        return []
     items: list[str] = []
     cur, quote = "", ""
     for ch in inner:
@@ -113,7 +141,9 @@ def _flow_list(text: str) -> list[Any]:
     if quote:
         raise ValueError(f"unterminated quote in flow list: {text!r}")
     items.append(cur)
-    return [_scalar(p) for p in items if p.strip()]
+    if any(not p.strip() for p in items):
+        raise ValueError(f"empty item in flow list: {text!r}")
+    return [_scalar(p) for p in items]
 
 
 def parse_simple_yaml(text: str) -> dict[str, Any]:
@@ -146,7 +176,7 @@ def parse_simple_yaml(text: str) -> dict[str, Any]:
             key, sep, rest = rows[i][1].partition(":")
             if not sep:
                 raise ValueError(f"expected 'key: value', got {rows[i][1]!r}")
-            key, rest = key.strip(), rest.strip()
+            key, rest = _key(key), rest.strip()
             if key in mapping:
                 raise ValueError(f"duplicate key {key!r}")
             i += 1
@@ -172,15 +202,29 @@ def parse_simple_yaml(text: str) -> dict[str, Any]:
     return result
 
 
+TOP_LEVEL_KEYS = {
+    "version", "branch_prefixes", "modules", "contract_files", "contract_requires",
+    "module_code", "editable_sections",
+}  # fmt: skip
+
+
 def validate_config(config: Mapping[str, Any]) -> None:
     """Raise ValueError for rules that would silently never match."""
+    unknown = sorted(set(config) - TOP_LEVEL_KEYS)
+    if unknown:
+        raise ValueError(f"unknown top-level key(s) {unknown}; allowed: {sorted(TOP_LEVEL_KEYS)}")
+    if not isinstance(config.get("modules"), dict) or not config["modules"]:
+        raise ValueError("`modules` must be a non-empty mapping")
+    for path, sections in (config.get("editable_sections") or {}).items():
+        if not isinstance(sections, list) or not all(isinstance(x, str) for x in sections):
+            raise ValueError(f"editable_sections[{path!r}] must be a list of section names")
     groups = [*config.get("modules", {}).values(), config.get("contract_files", []),
               config.get("contract_requires", []), config.get("module_code", [])]  # fmt: skip
     for group in groups:
         for glob in group:
             if not isinstance(glob, str) or not glob or glob.endswith("/"):
                 raise ValueError(f"invalid glob {glob!r} (use `dir/**`, no trailing slash)")
-            if re.search(r"[^/]\*\*|\*\*[^/]", glob.replace("**/", "").replace("/**", "")):
+            if any("**" in seg and seg != "**" for seg in glob.split("/")):
                 raise ValueError(f"`**` must be a whole path segment: {glob!r}")
 
 

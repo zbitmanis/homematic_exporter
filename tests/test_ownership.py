@@ -18,7 +18,7 @@ SCRIPTS = ROOT / "scripts"
 HOOK = ROOT / ".claude" / "hooks" / "path_guard.py"
 OWNERSHIP = ROOT / ".claude" / "ownership.yaml"
 HELPER = SCRIPTS / "new_module_worktree.sh"
-OUTSIDE = Path.home() / "hmx-outside-worktree"  # never created; only its name is used
+OUTSIDE = Path("/nonexistent-hmx-outside")  # never created; not under any temp dir or $HOME
 
 
 def _load(name: str, path: Path) -> ModuleType:
@@ -42,6 +42,26 @@ STATE_FILE = "src/homematic_exporter/state/s.py"
 def test_real_file_parses_validates_and_matches_pyyaml() -> None:
     assert CONFIG == yaml.safe_load(OWNERSHIP.read_text())
     lib.validate_config(CONFIG)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a: 1\n",
+        "a: true\nb: false\n",
+        "a: 'x y'\n",
+        'a: "x \\" y"\n',
+        'a: "x\\" # c"\n',  # escaped quote, then a # inside the string
+        "a: 'it''s'\n",
+        "a: word-1.2/x_y\n",
+        "a:\n  - 'x'\n  - \"y # z\"\n",
+        "a: ['x', 'y,z', plain]\nb: []\n",
+        "m:\n  k:\n    - 'z'\n  j: [a, b]\n",
+        "# only a comment\na: 1 # trailing\n",
+    ],
+)
+def test_parser_agrees_with_pyyaml_on_the_supported_subset(text: str) -> None:
+    assert lib.parse_simple_yaml(text) == (yaml.safe_load(text) or {})
 
 
 def test_parser_edge_cases() -> None:
@@ -73,6 +93,34 @@ def test_parser_edge_cases() -> None:
         "just text\n",
         "a: 'x' trailing\n",
         "a:\n  b: 1\n   c: 2\n",  # unexpected indentation
+        "a: it's # c\n",  # apostrophe in a plain scalar
+        'a: "x\\ny"\n',  # unsupported escape
+        "a: yes\n",
+        "a: no\n",
+        "a: on\n",
+        "a: NULL\n",
+        "a: ~\n",
+        "a: True\n",
+        "a: -1\n",
+        "a: +1\n",
+        "a: 1.5\n",
+        "a: 0x1F\n",
+        "a: 1_000\n",
+        "a: '\u0661\u0662'x\n",
+        "a: \u0661\u0662\n",  # Unicode digits are not integers
+        "a: {b: 1}\n",
+        "a: !!str x\n",
+        "a: &x y\n",
+        "a: *x\n",
+        "a: @x\n",
+        "a: - x\n",
+        "a: -\n",
+        "a: [[1], 2]\n",
+        "a: [x]]\n",
+        "a: [x,,y]\n",
+        "a: [x,]\n",
+        '"a b": 1\n',  # quoted key
+        "a b: 1\n",  # key with a space
     ],
 )
 def test_parser_rejects_what_it_does_not_understand(text: str) -> None:
@@ -83,6 +131,10 @@ def test_parser_rejects_what_it_does_not_understand(text: str) -> None:
 @pytest.mark.parametrize(
     "bad",
     [
+        {"module": {"state": ["a/**"]}},  # misspelled key
+        {"modules": {"state": ["a/**"]}, "contract_file": ["x"]},  # misspelled key
+        {"modules": {}},
+        {"modules": {"state": ["a/**"]}, "editable_sections": {"f.yaml": "metrics"}},
         {"modules": {"state": ["tests/state/"]}},
         {"contract_files": ["a**b"]},
         {"modules": {"s": [""]}},
@@ -450,6 +502,21 @@ def test_hook_blocks_edits_outside_the_worktree_but_allows_temp_files(
     assert outside.returncode == 2 and "outside your worktree" in outside.stderr
     scratch = tmp_path_factory.mktemp("scratch") / "notes.txt"
     assert run_hook(repo, scratch).returncode == 0
+
+
+def test_hook_blocks_a_sibling_worktree_even_when_it_lives_in_temp(
+    repo: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    mark(repo)
+    sibling = tmp_path_factory.mktemp("sibling")
+    (sibling / ".claude").mkdir()
+    (sibling / ".claude" / "ownership.yaml").write_text("version: 1\n")
+    result = run_hook(repo, sibling / "src" / "x.py")
+    assert result.returncode == 2 and "outside your worktree" in result.stderr
+    link = repo / "tests" / "state" / "to_sibling"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(sibling)
+    assert run_hook(repo, link / "x.py").returncode == 2
 
 
 def test_hook_blocks_a_symlink_that_escapes_the_worktree(repo: Path) -> None:

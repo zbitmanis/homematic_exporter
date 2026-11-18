@@ -9,7 +9,7 @@ Master plan: task list with the **closing review task** every plan ends with and
 | 1 | shared contracts + mini fixture | `feat/contracts` | done | partly: see section C | merged `824c8b6`, v1.1.0 |
 | 1b | review fix-ups: spec clarifications, contracts, fixture, config models, redact, plans (log rows 1-37) | `fix/phase-2-readiness` | done (gate green: 69 tests, `mypy src tests`) | incomplete: R2, R3, R6, R9 not run, `redact.py` fixes not re-checked (section C) | merged (#5) |
 | 1b-close | catch-up of the missing closing reviews for tasks 1 and 1b: `python-reviewer`, `code-reviewer`, `code-simplifier`, `doc-updater`, security re-check of `redact.py` | `fix/1b-closing-review` | - | R2, R3, R4 (re-check), R6, R9 | planned, **before phase 2** |
-| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | built (gate green: 149 tests, 80 for the guard) | closing review done once, 2 HIGH + 7 MEDIUM fixed (rows 38-52), re-check pending | before phase 2 |
+| 1c | ownership guardrails: `ownership.yaml`, CI check, path-guard hook, worktree helper (CODEOWNERS dropped: no value on a solo repo) | `feat/ownership-guard` | built (gate green: 149 tests, 80 for the guard) | closing review plus re-check done; all findings fixed or accepted (rows 38-58) | before phase 2 |
 | 2a | `state` | `feat/state` | not started | all applicable steps (section A matrix) | after 1b merges (plan: `specs/plans/state.md`) |
 | 2b | `metrics` | `feat/metrics` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/metrics.md`) |
 | 2c | `source` | `feat/source` | not started | all applicable steps (section A matrix) | after 1b merges (`specs/plans/source.md`) |
@@ -74,7 +74,7 @@ Harness changes (`.claude/`, hooks, agents) additionally get `harness-optimizer`
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 contracts | pass (3.13) | approve (catch-up) | approve (catch-up) | approve (catch-up) | not ready, fixed in 1b | skipped | n/a | n/a | n/a | merged |
 | 1b readiness | pass (3.13) | **not run** | **not run** | done: 2 HIGH found and fixed; fixes **not re-checked** by the reviewer | done: ready with conditions, conditions closed | **not run** | n/a | n/a | by coordinator, **`doc-updater` not run** | merged (#5) |
-| 1c guardrails | pass (3.13) | BLOCK, fixed | WARNING, fixed | 5 bypasses, fixed | ready with conditions, fixed | n/a | n/a | done by hand (hook + 6 CI scenarios) | checked, fixed | pending |
+| 1c guardrails | pass (3.13) | BLOCK then re-check: all fixed | WARNING, fixed | 5 bypasses then re-check: all fixed, 1 accepted design gap | ready with conditions, fixed | n/a | n/a | done by hand (hook + 6 CI scenarios) | checked, fixed | pending |
 | 2a state | - | - | - | - | C | - | C | n/a | - | - |
 | 2b metrics | - | - | - | - | C | - | C | n/a | - | - |
 | 2c source | - | - | - | - | C | - | C | n/a | - | - |
@@ -142,6 +142,12 @@ _Catch-up review of task 1 (merged `824c8b6`), 2026-11-19, run read-only by `pyt
 | 50 | architect | note | `parse_simple_yaml` exists only so the hook runs without PyYAML; JSON would remove it | owner decision kept YAML; parser is now strict and tested |
 | 51 | security | accepted limit | Bash edits (`sed -i`, `rm .hmx-module`) are invisible to the hook | documented; CI is the backstop |
 | 52 | security | note | PRs from forks choose their own head branch name | solo repo; owner review; branch must match the scheme |
+| 53 | python (re-check) | MEDIUM | Strict parser still mis-read valid YAML (apostrophe in a plain scalar, `\n`/unicode escapes, `yes/no/on`, signed and float numbers, `{}`/anchors/tags, Unicode digits, empty flow items, quoted keys) | fixed: values are limited to quoted strings (only `\"` and `\\` escapes), ASCII integers, `true`/`false` and simple plain words; everything else raises; keys must be plain; parity test against PyYAML on the supported subset, 35 negative cases |
+| 54 | python (re-check) | MEDIUM | Two tests depended on the developer's machine (`$HOME` under a temp dir) | fixed: fixed non-temp path |
+| 55 | python (re-check) | LOW | `a/***` accepted; lint nits in the hook | fixed: segment-wise `**` rule; hook lines wrapped |
+| 56 | security (re-check) | MEDIUM | The hook's temp-dir allowance let a module agent write into a sibling worktree that lives under /tmp (also via a symlink) | fixed: temp paths inside any checkout (marker or ownership file above them) are not allowed; tests incl. symlink |
+| 57 | security (re-check) | MEDIUM/LOW | A misspelled or quoted key in `ownership.yaml` (`module:`, `contract_file:`, `"config/default-config.yaml":`) silently dropped rules | fixed: `validate_config` rejects unknown top-level keys, an empty `modules` and malformed `editable_sections`; quoted keys already rejected by the parser |
+| 58 | security (re-check) | residual design gap | Module identity comes from the branch name the author picks: a module agent that names its branch `feat/foo` is a coordinator branch to CI; only the hook (marker file) and convention stop it. A PR that edits `ci.yml` itself is protected only by a required status check named `ownership` plus review of `.github/**` | **accepted by design** for a solo repo (owner review is the backstop); turn on the required check in branch protection |
 
 Clean results worth keeping: capture file not tracked and not in the image; no secrets, SGTINs or tokens in git history; workflows use `pull_request` (no secrets for forks) and no untrusted text in `run:`; contracts and config models match spec sections 3 and 5.1 field for field; the fixture mirrors the real structure.
 
