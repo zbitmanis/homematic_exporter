@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from homematic_exporter.config_models import ExtractConfig, Tuning
 from homematic_exporter.metrics.schema import (
@@ -24,6 +24,7 @@ from homematic_exporter.metrics.schema import (
     quote,
     validate_metrics,
 )
+from homematic_exporter.metrics.text import escape_text, hide_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,11 @@ IMAGE_CONFIG_PATH = Path("/app/default-config.yaml")
 # Used when running from a checkout (tests, `uvicorn` in the repo) instead of the image.
 CHECKOUT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "default-config.yaml"
 
-MAX_CONFIG_BYTES = 1024 * 1024
+# Pure-Python YAML costs about 2 ms per KiB, so the limit also bounds startup time (about 0.5 s).
+MAX_CONFIG_BYTES = 256 * 1024
+MAX_SECTION_ENTRIES = 2000  # lists and mappings directly inside `extract`
+MAX_TOP_LEVEL_KEYS = 20
+MAX_PYDANTIC_ISSUES = 100  # only 20 are shown; this bounds the work on hostile input
 MAX_RETENTION_DAYS = 36500  # 100 years; `timedelta` overflows far above this
 MAX_PATH_PART = 40
 
@@ -48,6 +53,13 @@ class AppConfig(BaseModel):
     tuning: Tuning = Field(default_factory=Tuning)
     extract: ExtractConfig
     metrics: tuple[MetricDef, ...] = Field(max_length=MAX_METRICS)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def _integer_version(cls, raw: object) -> object:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise ValueError("must be the integer 1")
+        return raw
 
 
 class _StrictLoader(yaml.SafeLoader):
@@ -103,13 +115,14 @@ def _issue_path(loc: tuple[int | str, ...]) -> str:
         if isinstance(part, int):
             out += f"[{part}]"
         else:
-            out += ("." if out else "") + part[:MAX_PATH_PART]
+            shown = hide_tokens(escape_text(part[:MAX_PATH_PART]))
+            out += ("." if out else "") + shown
     return out
 
 
 def _pydantic_issues(exc: ValidationError) -> list[Issue]:
     issues: list[Issue] = []
-    for err in exc.errors(include_input=False, include_url=False):
+    for err in exc.errors(include_input=False, include_url=False)[:MAX_PYDANTIC_ISSUES]:
         if err["type"] == "extra_forbidden":
             message = "unknown key"
         elif err["type"] == "missing":
@@ -120,14 +133,35 @@ def _pydantic_issues(exc: ValidationError) -> list[Issue]:
     return issues
 
 
+def _size_issues(raw: dict[object, object]) -> list[Issue]:
+    """Cheap size checks before pydantic touches the data (a hostile file can be 100k entries)."""
+    issues: list[Issue] = []
+    if len(raw) > MAX_TOP_LEVEL_KEYS:
+        issues.append(Issue("", f"too many top-level keys ({len(raw)})"))
+    metrics = raw.get("metrics")
+    if isinstance(metrics, list) and len(metrics) > MAX_METRICS:
+        issues.append(
+            Issue("metrics", f"too many entries ({len(metrics)} entries, limit {MAX_METRICS})")
+        )
+    extract = raw.get("extract")
+    if isinstance(extract, dict):
+        for key, section in extract.items():
+            if isinstance(section, list | dict) and len(section) > MAX_SECTION_ENTRIES:
+                where = f"extract.{hide_tokens(escape_text(str(key)[:MAX_PATH_PART]))}"
+                issues.append(Issue(where, f"too many entries ({len(section)} entries)"))
+    return issues
+
+
 def parse_config(raw: object) -> AppConfig:
     """Validate parsed YAML into `AppConfig`; raises `ConfigError` with key paths (R19)."""
     if not isinstance(raw, dict):
         raise ConfigError([Issue("", "the top level of the config must be a mapping")])
+    if oversized := _size_issues(raw):
+        raise ConfigError(oversized)
     try:
         config = AppConfig.model_validate(raw)
     except ValidationError as exc:
-        raise ConfigError(_pydantic_issues(exc)) from None
+        raise ConfigError(_pydantic_issues(exc), total=exc.error_count()) from None
     extras = {(e.scope, e.key) for e in config.extract.extras}
     issues = validate_metrics(config.metrics, extras)
     if config.tuning.state_retention_days > MAX_RETENTION_DAYS:
@@ -145,6 +179,8 @@ def _read_text(path: Path) -> str:
         raise ConfigError([Issue("", "config file not found")]) from None
     except OSError as exc:
         raise ConfigError([Issue("", f"cannot open config file ({exc.strerror})")]) from None
+    except ValueError:  # e.g. an embedded NUL in the path
+        raise ConfigError([Issue("", "cannot open config file (invalid path)")]) from None
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise ConfigError([Issue("", "config path is not a regular file")])
@@ -162,13 +198,27 @@ def _read_text(path: Path) -> str:
         raise ConfigError([Issue("", "config file is not valid UTF-8")]) from None
 
 
+def _present(path: Path) -> bool:
+    """True if something is at `path`, even a dangling symlink or behind an unreadable parent.
+
+    Such a mount is broken, and `_read_text` reports it; it must never fall back (R21).
+    """
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except (OSError, ValueError):
+        return True
+    return True
+
+
 def _resolve(path: Path | None) -> tuple[Path, str]:
     if path is not None:
         return path, "explicit path"
-    if MOUNT_CONFIG_PATH.exists():
+    if _present(MOUNT_CONFIG_PATH):
         return MOUNT_CONFIG_PATH, "mounted config"
     for bundled in (IMAGE_CONFIG_PATH, CHECKOUT_CONFIG_PATH):
-        if bundled.exists():
+        if _present(bundled):
             return bundled, "bundled default"
     raise ConfigError([Issue("", "no config file: nothing mounted and no bundled default")])
 
@@ -184,4 +234,4 @@ def load_config(path: Path | None = None) -> AppConfig:
     try:
         return parse_config(_parse_yaml(_read_text(chosen)))
     except ConfigError as exc:
-        raise ConfigError(exc.issues, source=str(chosen)) from None
+        raise ConfigError(exc.issues, source=str(chosen), total=exc.total) from None

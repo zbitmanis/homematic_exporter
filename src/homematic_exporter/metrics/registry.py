@@ -11,7 +11,8 @@ import math
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Self
 
 from prometheus_client import CollectorRegistry, generate_latest
 from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, Metric
@@ -33,10 +34,12 @@ from homematic_exporter.metrics.schema import (
     validate_metrics,
 )
 from homematic_exporter.metrics.series import LabelValues, SeriesSet, compute_series
+from homematic_exporter.metrics.text import clean_text
 
 logger = logging.getLogger(__name__)
 
 MAX_VERSION_LENGTH = 100
+MAX_HELP_LENGTH = 500
 MIN_TIMESTAMP = 0.0
 MAX_TIMESTAMP = 4102444800.0  # 2100-01-01, same bound as the state module
 ZERO_SERIES_WARN_AFTER = 2  # consecutive updates with no series (C11)
@@ -61,12 +64,17 @@ class _State:
 
 
 class _Collector(Collector):
-    def __init__(self, get_state: Callable[[], _State], version: str, clock: Callable[[], float]):
+    """Turns the current `_State` into metric families at scrape time (reads memory only)."""
+
+    def __init__(
+        self, get_state: Callable[[], _State], version: str, clock: Callable[[], float]
+    ) -> None:
         self._get_state = get_state
         self._version = version
         self._clock = clock
 
     def collect(self) -> Iterator[Metric]:
+        """Entity and derived gauges, then the meta metrics."""
         state = self._get_state()
         for family in state.families:
             gauge = GaugeMetricFamily(family.name, family.help, labels=family.label_names)
@@ -76,6 +84,7 @@ class _Collector(Collector):
         yield from self._meta(state)
 
     def _meta(self, state: _State) -> Iterator[Metric]:
+        """Built-in metrics (6.6); the poll ones only exist after the first success."""
         errors = CounterMetricFamily(POLL_ERRORS, "Failed polls", value=float(state.poll_errors))
         yield errors
         info = GaugeMetricFamily(BUILD_INFO, "Build information", labels=["version"])
@@ -117,7 +126,9 @@ class Registry:
         self._duplicates_warned: set[str] = set()
         self._first_update = True
         self._registry = CollectorRegistry()
-        self._registry.register(_Collector(self._get_state, version[:MAX_VERSION_LENGTH], clock))
+        self._registry.register(
+            _Collector(self._get_state, clean_text(version, MAX_VERSION_LENGTH), clock)
+        )
 
     @classmethod
     def build(
@@ -127,32 +138,32 @@ class Registry:
         version: str = "dev",
         *,
         clock: Callable[[], float] = time.time,
-    ) -> "Registry":
+    ) -> Self:
         """Validate the definitions (R19) and create an empty registry; `clock` is for tests."""
         if issues := validate_metrics(metric_defs):
             raise ConfigError(issues)
         return cls(metric_defs, tuning, version, clock)
 
     def _get_state(self) -> _State:
+        """The current immutable state (what a scrape reads)."""
         with self._lock:
             return self._state
 
     def update(self, snapshot: Snapshot, batteries: Sequence[BatteryRecord] = ()) -> None:
         """Replace all entity and derived series from one snapshot (None values yield none)."""
         results = [(d, compute_series(d, snapshot, batteries)) for d in self._defs]
-        families = [_Family(d.name, d.help, d.labels, r.samples) for d, r in results if r.samples]
+        families = [
+            _Family(d.name, clean_text(d.help, MAX_HELP_LENGTH), d.labels, r.samples)
+            for d, r in results
+            if r.samples
+        ]
         families.extend(self._derived(snapshot))
+        count = sum(len(f.samples) for f in families)
         with self._lock:
             self._track(results)
-            self._state = _State(
-                tuple(families),
-                self._state.poll_errors,
-                self._state.last_success,
-                self._state.poll_duration,
-            )
-        if self._first_update:
-            self._first_update = False
-            count = sum(len(f.samples) for f in families)
+            self._state = replace(self._state, families=tuple(families))
+            first, self._first_update = self._first_update, False
+        if first:
             logger.info("metrics registry updated: %d series", count)
 
     def _derived(self, snapshot: Snapshot) -> list[_Family]:
@@ -206,13 +217,12 @@ class Registry:
         if not (math.isfinite(duration) and duration >= 0):
             raise ValueError("invalid duration")
         with self._lock:
-            s = self._state
-            self._state = _State(s.families, s.poll_errors, timestamp, duration)
+            self._state = replace(self._state, last_success=timestamp, poll_duration=duration)
 
     def record_error(self) -> None:
+        """A poll failed; the last good series stay exported."""
         with self._lock:
-            s = self._state
-            self._state = _State(s.families, s.poll_errors + 1, s.last_success, s.poll_duration)
+            self._state = replace(self._state, poll_errors=self._state.poll_errors + 1)
 
     def exposition(self) -> bytes:
         """Prometheus text exposition of the current state (reads only memory)."""

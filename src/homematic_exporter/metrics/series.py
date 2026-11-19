@@ -3,23 +3,18 @@
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
 
-from homematic_exporter.contracts import BatteryRecord, Snapshot
-from homematic_exporter.metrics.schema import EXTRAS_PREFIX, MetricDef, Transform
+from homematic_exporter.contracts import BatteryRecord, Contact, Device, Room, Snapshot, Valve
+from homematic_exporter.metrics.schema import (
+    EXTRAS_PREFIX,
+    LABEL_ATTRS,
+    MetricDef,
+    Transform,
+)
+from homematic_exporter.metrics.text import clean_text
 
 LabelValues = tuple[str, ...]
-
-# Spec 6.1 mapping table: which attribute of the entity carries each label.
-_ROOM_LABELS = {"room": "name"}
-_FULL_LABELS = {"room": "room", "device_type": "device_type", "device": "device"}
-_LABEL_ATTRS: dict[str, dict[str, str]] = {
-    "rooms": _ROOM_LABELS,
-    "devices": {**_FULL_LABELS, "device": "name"},
-    "valves": _FULL_LABELS,
-    "contacts": _FULL_LABELS,
-    "batteries": _FULL_LABELS,
-}
+__all__ = ["LABEL_ATTRS", "LabelValues", "SeriesSet", "compute_series", "to_value"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +26,12 @@ class SeriesSet:
     duplicates: int  # entities dropped because an earlier one had the same label values
 
 
-def _entities(scope: str, snapshot: Snapshot, batteries: Sequence[BatteryRecord]) -> Sequence[Any]:
+Entity = Room | Device | Valve | Contact | BatteryRecord
+
+
+def _entities(
+    scope: str, snapshot: Snapshot, batteries: Sequence[BatteryRecord]
+) -> Sequence[Entity]:
     match scope:
         case "rooms":
             return snapshot.rooms
@@ -87,10 +87,10 @@ def to_value(raw: object, transform: Transform, scale: float) -> float | None:
     return _finite(number * scale)
 
 
-def _raw_getter(value: str) -> Callable[[Any], object]:
+def _raw_getter(value: str) -> Callable[[Entity], object]:
     if value.startswith(EXTRAS_PREFIX):
         key = value.removeprefix(EXTRAS_PREFIX)
-        return lambda entity: entity.extras.get(key)
+        return lambda entity: getattr(entity, "extras", {}).get(key)
     return lambda entity: getattr(entity, value, None)
 
 
@@ -98,7 +98,7 @@ def compute_series(
     definition: MetricDef, snapshot: Snapshot, batteries: Sequence[BatteryRecord]
 ) -> SeriesSet:
     entities = _entities(definition.scope, snapshot, batteries)
-    attrs = [_LABEL_ATTRS[definition.scope][label] for label in definition.labels]
+    attrs = [LABEL_ATTRS[definition.scope][label] for label in definition.labels]
     get_raw = _raw_getter(definition.value)
     samples: dict[LabelValues, float] = {}
     duplicates = 0
@@ -106,7 +106,7 @@ def compute_series(
         value = to_value(get_raw(entity), definition.transform, definition.scale)
         if value is None:
             continue
-        labels = tuple(str(getattr(entity, attr)) for attr in attrs)
+        labels = tuple(clean_text(str(getattr(entity, attr))) for attr in attrs)
         if labels in samples:
             duplicates += 1
             continue

@@ -7,10 +7,11 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
+from homematic_exporter.config_models import Tuning
 from homematic_exporter.metrics import ConfigError, Registry, load_config, parse_config
 from homematic_exporter.metrics import config as config_module
-from homematic_exporter.config_models import Tuning
 from tests.metrics.conftest import metric
 from tests.metrics.helpers import defs, device, parse, room, snapshot, valve
 
@@ -22,10 +23,15 @@ def full_registry(**kw: Any) -> Registry:
     return Registry.build(
         defs(
             metric(),
-            metric(name="homematic_device_rssi_dbm", scope="devices", value="rssi_dbm",
-                   labels=labels),
-            metric(name="homematic_valve_position_ratio", scope="valves",
-                   value="position_ratio", labels=labels),
+            metric(
+                name="homematic_device_rssi_dbm", scope="devices", value="rssi_dbm", labels=labels
+            ),
+            metric(
+                name="homematic_valve_position_ratio",
+                scope="valves",
+                value="position_ratio",
+                labels=labels,
+            ),
         ),
         Tuning(),
         **kw,
@@ -56,7 +62,9 @@ def test_surrogate_version_does_not_break_scrapes() -> None:
 
 
 def test_hostile_help_does_not_break_scrapes() -> None:
-    r = Registry.build(defs(metric(help="bad\ud800\x00 help")), Tuning())
+    with pytest.raises(ValidationError):  # lone surrogates never get into a definition
+        defs(metric(help="bad\ud800"))
+    r = Registry.build(defs(metric(help="bad\x00 help\x1b")), Tuning())
     r.update(snapshot(rooms=(room(),)))
     assert b"homematic_room_temperature_celsius" in r.exposition()
 
@@ -73,9 +81,7 @@ def test_huge_names_are_capped() -> None:
 def test_legitimate_unicode_is_unchanged() -> None:
     r = full_registry()
     r.update(snapshot(rooms=(room(LEGIT),)))
-    assert parse(r.exposition())["homematic_room_temperature_celsius"] == {
-        (("room", LEGIT),): 21.5
-    }
+    assert parse(r.exposition())["homematic_room_temperature_celsius"] == {(("room", LEGIT),): 21.5}
 
 
 def test_sanitising_can_merge_names_and_is_reported_as_duplicate() -> None:
@@ -90,7 +96,7 @@ def test_sanitising_can_merge_names_and_is_reported_as_duplicate() -> None:
 def test_huge_metrics_list_fails_fast_with_a_true_count(
     raw_config: dict[str, Any], tmp_path: Path
 ) -> None:
-    entries = "\n".join("  - {a: 1}" for _ in range(100_000))
+    entries = "\n".join("  - {a: 1}" for _ in range(20_000))
     text = yaml.safe_dump({k: v for k, v in raw_config.items() if k != "metrics"})
     path = tmp_path / "big.yaml"
     path.write_text(text + "metrics:\n" + entries + "\n")
@@ -99,33 +105,35 @@ def test_huge_metrics_list_fails_fast_with_a_true_count(
     with pytest.raises(ConfigError) as info:
         load_config(path)
     assert time.monotonic() - start < 5
-    assert "100000 entries" in str(info.value)
+    assert "20000 entries" in str(info.value)
     assert "metrics" in info.value.issues[0].path
 
 
 def test_issue_overflow_reports_the_true_count(raw_config: dict[str, Any]) -> None:
-    raw_config["metrics"] = [metric(labels=["bad"]) for _ in range(500)]
+    raw_config["metrics"] = [
+        metric(name=f"homematic_room_m{i}_celsius", labels=["bad"]) for i in range(500)
+    ]
     with pytest.raises(ConfigError) as info:
         parse_config(raw_config)
-    assert "and 480 more" in str(info.value) or "and 479 more" in str(info.value)
+    assert info.value.total == 500
+    assert "and 480 more" in str(info.value)
 
 
-def test_many_issues_are_not_all_scrubbed(
-    raw_config: dict[str, Any], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    calls = 0
-    real = config_module.Issue
-
-    def counting(path: str, message: str) -> Any:
-        nonlocal calls
-        calls += 1
-        return real(path, message)
-
-    monkeypatch.setattr(config_module, "Issue", counting)
+def test_only_the_shown_issues_are_kept(raw_config: dict[str, Any]) -> None:
     raw_config["metrics"] = [{"x": 1} for _ in range(400)]
     with pytest.raises(ConfigError) as info:
         parse_config(raw_config)
-    assert len(info.value.issues) <= 21
+    assert len(info.value.issues) == 20
+    assert info.value.total >= 400
+
+
+def test_a_one_mebibyte_file_is_rejected_before_parsing(tmp_path: Path) -> None:
+    path = tmp_path / "huge.yaml"
+    path.write_text("metrics:\n" + "  - {a: 1}\n" * 100_000)
+    start = time.monotonic()
+    with pytest.raises(ConfigError, match="too large"):
+        load_config(path)
+    assert time.monotonic() - start < 1
 
 
 # --- loader edge cases -----------------------------------------------------------------------
@@ -175,7 +183,7 @@ def test_newline_and_escape_keys_cannot_forge_log_lines(raw_config: dict[str, An
 
 
 def test_token_like_keys_are_redacted(raw_config: dict[str, Any]) -> None:
-    token = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"
+    token = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"  # noqa: S105 (fake)
     raw_config[token] = 1
     raw_config["metrics"] = [metric(labels=[token])]
     with pytest.raises(ConfigError) as info:

@@ -32,10 +32,20 @@ Behaviour beyond the spec text (decisions):
 - Counters are exposed without a `_created` series (custom collector); entity metrics with no series produce no `# HELP`/`# TYPE` lines.
 
 ## Accepted limits
-- YAML: file at most 1 MiB, valid UTF-8, one document, no aliases (rejected), no duplicate keys, no merge keys (`<<`), no non-string keys; nesting deeper than the interpreter's recursion limit is a `ConfigError`.
+- YAML: file at most 256 KiB (pure-Python YAML costs about 2 ms per KiB, so this also bounds startup time to about 0.5 s; the bundled default is about 6 KiB), valid UTF-8, one document, no aliases (rejected), no duplicate keys, no merge keys (`<<`), no non-string keys; nesting deeper than the interpreter's recursion limit is a `ConfigError`.
+- Before pydantic runs, a `metrics` list over 500 entries, an `extract` section list/mapping over 2000 entries or more than 20 top-level keys fail fast. Only the first 20 issues are scrubbed and printed; `ConfigError.total` keeps the true count.
 - At most 500 metric definitions, 64 `in` members, names 200 characters, help 500 characters. `state_retention_days` is capped at 36500 here because `config_models.Tuning` has no upper bound (see the plan's Requests).
 - Value attributes of a scope are derived from the contract dataclasses, so a new field there becomes valid in config without a change here; `extras.<key>` is checked against `extract.extras` only when loading a whole config (`Registry.build` alone checks the shape).
 - Only `gauge` entity metrics exist in v1. Series count is not capped; it is bounded by the snapshot, and metric definitions are operator-owned.
 - Concurrency: `Registry` is safe for one writer plus any number of scrape readers (the poll task and the HTTP handlers, or threads). Several concurrent writers are serialised by the lock, but their warning bookkeeping assumes a single poll task.
 - A raw-field typo still gives a missing series, not an error (C11); the warning and the series count log are the mitigation.
 - Not verified here: coverage percentage (no coverage tool in the gate venv), behaviour against the real Homematic JSON (task 4 owns the fixture-through-parser golden).
+
+## Text safety and operations (fix round 1)
+- Label values and `version` go through `text.clean_text` once, at compute/build time: lone surrogates, control characters (Cc, including NUL, ESC, newline), line/paragraph separators and bidi controls (U+202A-202E, U+2066-2069) become a space, the result is stripped and capped at `MAX_LABEL_LENGTH` = 200 characters (`version` 100, help 500). Umlauts, emoji and ZWJ sequences are untouched. Two entities that become equal after cleaning count as a duplicate label set (first wins). A lone surrogate can no longer make `exposition()` raise. Help text from a definition cannot contain a lone surrogate (pydantic rejects it).
+- Error text: control characters are shown as escapes (`\n`, `\x1b`) so a config key cannot forge log lines; runs of 32+ token-alphabet characters containing both a letter and a digit are replaced by `[REDACTED]` in echoed keys and values (letters-only names such as `homematic_device_battery_last_replaced_timestamp_seconds` are untouched).
+- `load_config` is synchronous startup work (pure-Python `SafeLoader`; CSafeLoader is deliberately not used). Never call it while serving.
+- A mount path that exists as a dangling symlink or behind an unreadable parent counts as present and fails with `ConfigError`; it never falls back to the default (R21). A path with a NUL byte is a `ConfigError`. `version` must be the integer 1 (not `true`, not `1.0`).
+- `Registry.build` raises `ConfigError` and `record_success` raises `ValueError`: `app` must keep both inside its error handling.
+- `exposition()` is synchronous and CPU-bound (about 1 ms at 20 devices, about 94 ms at 2000 devices); series count is uncapped except by the 500-definition cap. `app` serves it with `prometheus_client.CONTENT_TYPE_LATEST`.
+- Scope-to-label mapping lives once in `schema.LABEL_ATTRS` (`SCOPE_LABELS` is derived from it).

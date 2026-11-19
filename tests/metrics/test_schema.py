@@ -199,7 +199,8 @@ def test_non_finite_tuning_rejected(raw_config: dict[str, Any]) -> None:
 def test_errors_are_collected_and_capped(raw_config: dict[str, Any]) -> None:
     entries = [metric(name=f"homematic_room_m{i}_celsius", labels=["bad"]) for i in range(100)]
     err = pytest.raises(ConfigError, parse_config, with_metrics(raw_config, *entries)).value
-    assert len(err.issues) == 100
+    assert err.total == 100
+    assert len(err.issues) == 20
     assert len(str(err).splitlines()) < 40
     assert "more" in str(err)
 

@@ -243,7 +243,8 @@ def test_hostile_label_and_help_text_stays_valid_exposition() -> None:
     nasty = 'a"b\\c\nd'
     r = reg(metric(help='line1\nline2 \\ "q"'))
     r.update(snapshot(rooms=(room(nasty),)))
-    assert parse(r.exposition())[TEMP] == {k(room=nasty): 21.5}
+    # quotes and backslashes are escaped by the format; the newline is sanitised to a space
+    assert parse(r.exposition())[TEMP] == {k(room='a"b\\c d'): 21.5}
 
 
 def test_series_are_sorted_for_stable_output() -> None:

@@ -14,6 +14,7 @@ from typing import Literal, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from homematic_exporter.contracts import BatteryRecord, Contact, Device, Room, Valve
+from homematic_exporter.metrics.text import escape_text, hide_tokens
 from homematic_exporter.redact import scrub
 
 Scope = Literal["rooms", "devices", "valves", "contacts", "batteries"]
@@ -44,14 +45,17 @@ RESERVED_NAMES = frozenset(
 )
 
 # Spec 6.1 mapping table: labels available per metric scope and the matching `extras` scope.
-_FULL_LABELS = ("room", "device_type", "device")
-SCOPE_LABELS: Mapping[str, tuple[str, ...]] = {
-    "rooms": ("room",),
-    "devices": _FULL_LABELS,
+_FULL_LABELS = {"room": "room", "device_type": "device_type", "device": "device"}
+# Per scope: label name -> attribute of the entity that carries it. The single source for both
+# validation (SCOPE_LABELS) and the registry.
+LABEL_ATTRS: Mapping[str, Mapping[str, str]] = {
+    "rooms": {"room": "name"},
+    "devices": {**_FULL_LABELS, "device": "name"},
     "valves": _FULL_LABELS,
     "contacts": _FULL_LABELS,
     "batteries": _FULL_LABELS,
 }
+SCOPE_LABELS: Mapping[str, tuple[str, ...]] = {s: tuple(m) for s, m in LABEL_ATTRS.items()}
 ALLOWED_LABELS = frozenset(_FULL_LABELS)
 EXTRAS_SCOPE: Mapping[str, str] = {
     "rooms": "room",
@@ -83,7 +87,7 @@ class Issue(NamedTuple):
 
 def make_issue(path: str, message: str) -> Issue:
     """An issue with secret-looking text scrubbed and overlong text cut (no secret values)."""
-    return Issue(scrub(path), scrub(message[:MAX_MESSAGE_LENGTH]))
+    return Issue(scrub(escape_text(path)), scrub(escape_text(message[:MAX_MESSAGE_LENGTH])))
 
 
 def quote(value: object) -> str:
@@ -93,20 +97,25 @@ def quote(value: object) -> str:
     except ValueError:  # an integer beyond Python's digit limit
         text = "<unprintable value>"
     if len(text) > MAX_ECHO_LENGTH:
-        return text[: MAX_ECHO_LENGTH - 3] + "..."
-    return text
+        text = text[: MAX_ECHO_LENGTH - 3] + "..."
+    return hide_tokens(text)
 
 
 class ConfigError(Exception):
-    """Invalid configuration. `issues` hold key paths with scrubbed messages; no secret values."""
+    """Invalid configuration. `issues` hold the first few key paths with scrubbed messages (no
+    secret values); `total` is the true number of problems.
+    """
 
-    def __init__(self, issues: Sequence[Issue], source: str | None = None) -> None:
-        self.issues = tuple(make_issue(i.path, i.message) for i in issues)
+    def __init__(
+        self, issues: Sequence[Issue], source: str | None = None, total: int | None = None
+    ) -> None:
+        # Cut before scrubbing: a hostile file may produce thousands of issues.
+        self.total = len(issues) if total is None else total
+        self.issues = tuple(make_issue(i.path, i.message) for i in issues[:MAX_ISSUES_SHOWN])
         self.source = source
-        shown = [f"{i.path}: {i.message}" if i.path else i.message for i in self.issues]
-        lines = shown[:MAX_ISSUES_SHOWN]
-        if len(shown) > MAX_ISSUES_SHOWN:
-            lines.append(f"... and {len(shown) - MAX_ISSUES_SHOWN} more")
+        lines = [f"{i.path}: {i.message}" if i.path else i.message for i in self.issues]
+        if self.total > MAX_ISSUES_SHOWN:
+            lines.append(f"... and {self.total - MAX_ISSUES_SHOWN} more")
         header = f"invalid config {source}:" if source else "invalid config:"
         super().__init__("\n  ".join([header, *lines]))
 
