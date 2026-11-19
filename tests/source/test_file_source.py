@@ -221,3 +221,8 @@ async def test_hostile_model_string_is_bounded_in_the_log(
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert len(text) < 500
     assert "\nFORGED" not in text
+
+
+async def test_path_with_nul_byte_is_upstream_error(default_extract: ExtractConfig) -> None:
+    with pytest.raises(UpstreamError):
+        await make(Path("a\0b.json"), default_extract).fetch()

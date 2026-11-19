@@ -11,7 +11,7 @@ from homematic_exporter.source import CloudSource
 from homematic_exporter.source.cloud import MAX_BODY_CHARS
 
 NOW = 1_795_000_000.0
-TOKEN = "Tok3n-s3cr3t-VALUE-0123456789"
+TOKEN = "Tok3n-s3cr3t-VALUE-0123456789"  # noqa: S105 (fake)
 ACCESS_POINT = "3014F711A000ABCDEF123456"
 
 
@@ -53,14 +53,19 @@ class FakeHome:
 
 
 def make(
-    home: FakeHome, extract: ExtractConfig, timeout: float = 5.0, factory_calls: list[int] | None = None
+    home: FakeHome,
+    extract: ExtractConfig,
+    timeout: float = 5.0,
+    factory_calls: list[int] | None = None,
 ) -> CloudSource:
     def factory() -> FakeHome:
         if factory_calls is not None:
             factory_calls.append(1)
         return home
 
-    return CloudSource(ACCESS_POINT, TOKEN, timeout, extract, home_factory=factory, clock=lambda: NOW)
+    return CloudSource(
+        ACCESS_POINT, TOKEN, timeout, extract, home_factory=factory, clock=lambda: NOW
+    )
 
 
 def test_implements_source_protocol(default_extract: ExtractConfig) -> None:
@@ -251,9 +256,16 @@ def test_repr_hides_credentials(default_extract: ExtractConfig) -> None:
 
 @pytest.mark.parametrize(
     ("access_point", "token", "timeout"),
-    [("", TOKEN, 1.0), (ACCESS_POINT, "", 1.0), ("  ", TOKEN, 1.0), (ACCESS_POINT, TOKEN, 0),
-     (ACCESS_POINT, TOKEN, -1), (ACCESS_POINT, TOKEN, float("nan")), (ACCESS_POINT, TOKEN, float("inf"))],
-)  # fmt: skip
+    [
+        ("", TOKEN, 1.0),
+        (ACCESS_POINT, "", 1.0),
+        ("  ", TOKEN, 1.0),
+        (ACCESS_POINT, TOKEN, 0),
+        (ACCESS_POINT, TOKEN, -1),
+        (ACCESS_POINT, TOKEN, float("nan")),
+        (ACCESS_POINT, TOKEN, float("inf")),
+    ],
+)
 def test_constructor_validates_without_echoing_secrets(
     access_point: str, token: str, timeout: float, default_extract: ExtractConfig
 ) -> None:

@@ -25,7 +25,7 @@ def _read_file(path: Path) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = os.open(path, flags)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:  # ValueError: embedded NUL in the path
         raise UpstreamError(f"cannot open configuration file: {type(exc).__name__}") from None
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):

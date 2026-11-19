@@ -270,13 +270,12 @@ def _build_room(room: _RoomInfo, config: ExtractConfig) -> Room:
     )
 
 
-def _channel_room(channel: _Raw, rooms: list[_RoomInfo]) -> str | None:
+def _channel_room(channel: _Raw, room_by_group: Mapping[str, str]) -> str | None:
     """The one room a channel's `groups` names; `None` if no room or more than one."""
     groups = channel.get("groups")
     if not isinstance(groups, list):
         return None
-    wanted = {g for g in groups if isinstance(g, str)}
-    names = {r.name for r in rooms if r.group_id in wanted}
+    names = {room_by_group[g] for g in groups if isinstance(g, str) and g in room_by_group}
     return next(iter(names)) if len(names) == 1 else None
 
 
@@ -299,6 +298,7 @@ def _sort_key(info: _DeviceInfo, channel_key: str) -> tuple[str, ...]:
 def _valve_drafts(
     infos: list[_DeviceInfo], rooms: list[_RoomInfo], config: ExtractConfig
 ) -> list[_Draft]:
+    room_by_group = {r.group_id: r.name for r in rooms}
     drafts: list[_Draft] = []
     for info in infos:
         for key, channel in info.channels:
@@ -309,7 +309,7 @@ def _valve_drafts(
                     room: str | None = info.room
                     base = info.name
                 else:
-                    room = _channel_room(channel, rooms)
+                    room = _channel_room(channel, room_by_group)
                     base = f"{room} {rule.device_type}"
                 if room is not None:
                     key_ = _sort_key(info, key)
