@@ -10,6 +10,7 @@
 | `src/homematic_exporter/app/` | `create_app(...)`, settings from env, `wiring.py` (only place importing concrete implementations), poll task in the lifespan, routes `/metrics` `/health` `/status`, logging filter built on `redact.scrub` |
 | `src/homematic_exporter/app/settings.py` (or equivalent) | reads the environment, incl. `CONFIG_FILE` and `APP_VERSION` (passed to `Registry.build` as `version`) |
 | `src/homematic_exporter/app/ports.py` | local Protocols for the registry (`update`, `record_success`, `record_error`, `exposition`), battery history and config (`extract`, `tuning`) |
+| `src/homematic_exporter/app/wiring.py` (state) | construct `FileStateStore(STATE_DIR)` (read `STATE_DIR` in settings; map `StateDirError` to a non-zero exit with a path-free log line), pass `config.tuning` to `BatteryHistory`, call `update(devices, snapshot.taken_at)` from the single poll task via `asyncio.to_thread` (it does a blocking `fsync`), keep ONE shared instance; `update` never raises `OSError` (spec 3) but may raise `ValueError("invalid timestamp")` |
 | `tests/app/`, `tests/e2e/` | fake `Source` (honours `on_collision`); `SOURCE_KIND=file` e2e; restart with the same `STATE_DIR`; startup collision exits non-zero |
 
 ## Order of work
