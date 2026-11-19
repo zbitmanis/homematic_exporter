@@ -31,16 +31,22 @@ gate output plus the transition table covered by tests; no secrets or paths in e
 
 ## Closing review task (mandatory, last task of this plan; specs/plan.md section A)
 The PR is not opened until every step is done or marked n/a with a reason. Paste each verdict into the PR description. After any HIGH/CRITICAL fix the same reviewer re-checks.
-- [ ] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
-- [ ] R2 `python-reviewer`
-- [ ] R3 `code-reviewer`
-- [ ] R4 `security-reviewer`
-- [ ] R5 `architect`: conditional: only if a contract change was requested or shared types touched
-- [ ] R6 `code-simplifier` (after R2-R5 are clean; gate re-run)
-- [ ] R7 `performance-optimizer`: conditional: n/a unless a hot path appears
-- [ ] R8 n/a: tests only (no app yet)
-- [ ] R9 `doc-updater`: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
+- [x] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
+- [x] R2 `python-reviewer`: BLOCK (corrupt-file startup crash), fixed; re-checked twice, all fixed (last finding: `update` timestamp range vs load bounds)
+- [x] R3 `code-reviewer`: APPROVE; spec section 8 implemented rule by rule; one MEDIUM (a failed save never retried) fixed
+- [x] R4 `security-reviewer`: no path, permission or symlink flaw; found and fixed corrupt-file crashes, NaN/Infinity, FIFO hang, over-broad temp cleanup, fd leak, unchecked stored ranges; re-checked twice, all fixed
+- [x] R5 `architect`: n/a, no contract change requested and no shared types touched
+- [x] R6 `code-simplifier`: `update` and `load` split into helpers, behavior unchanged, gate re-run (358 tests)
+- [x] R7 `performance-optimizer`: n/a, one synchronous write per day or change on about 20 devices; the `app` plan moves the blocking `fsync` off the event loop
+- [x] R8 n/a: tests only (no app yet); FIFO, descriptor-leak and round-trip cases also reproduced by hand
+- [x] R9 docs check (Haiku, doc-updater role): module docs done here; spec, SBOM and `app` plan updates in the separate docs PR (`feat/spec-state-clarifications`)
 - [ ] R10 owner PR review and squash merge
 
 ## Requests (to the coordinator)
-_none yet_
+These are requests to the coordinator (separate docs PR).
+
+- (a) spec section 8 / R12 / R14 clarifications: the stored format includes `room` and `device_type` (a change to either causes a save); `unreachable` None counts as reachable, also on first sight; "was low" means `low_since is not None`; R12 means the directory permissions (plus owner and non-directory checks); pruning keeps a record exactly N days old; malformed stored records are dropped; a failed save is retried on the next update; an invalid `now` raises `ValueError`.
+- (b) app plan: construct `FileStateStore(STATE_DIR)` in `wiring.py` and map `StateDirError` to a non-zero exit with a path-free log line; pass `config.tuning`; call `update(devices, snapshot.taken_at)` from the single poll task; run the synchronous fsync write off the event loop (`asyncio.to_thread`); document that `update` never raises `OSError`.
+- (c) deployment note: the state volume must be mode 0700 and owned by the container user (rootless podman: the `:U` volume option or equivalent); a private parent directory is recommended (the store does not create parents).
+- (d) `docs/sbom/components.md` row for `state`: depends on "contracts, config_models" and lists `StateDirError`.
+- (e) spec/deployment note: the state directory must be used by ONE process (single replica, no locking); a failing save is logged at most once per 15 minutes; special files and symlinks as state files are rejected.
