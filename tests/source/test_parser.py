@@ -652,6 +652,6 @@ def test_non_numeric_channel_key_sorts_after_numeric_ones_for_suffixing(
     chans["999999999"] = {"functionalChannelType": FLOOR, "groups": ["G1"], "valvePosition": 0.9}
     snap = parse_snapshot(state, NOW, default_extract, "suffix")
     assert [(v.device, v.position_ratio) for v in snap.valves] == [
+        ("lab floor-valve", 0.9),  # channels come out in number order, non-numeric keys last
         ("lab floor-valve-2", 0.1),
-        ("lab floor-valve", 0.9),
     ]

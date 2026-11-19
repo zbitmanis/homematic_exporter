@@ -78,7 +78,10 @@ class _DeviceInfo:
 
 
 _UNSAFE_CATEGORIES = frozenset({"Cc", "Cs", "Zl", "Zp"})  # control, lone surrogate, line/para sep
-_BIDI_CONTROLS = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
+# LRE..RLO, isolates, plus LRM, RLM and ALM (the same set the metrics module will replace)
+_BIDI_CONTROLS = frozenset(
+    chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A), 0x200E, 0x200F, 0x061C)
+)
 
 
 def _is_unsafe(char: str) -> bool:
@@ -336,7 +339,8 @@ class _Draft:
 
 
 def _sort_key(info: _DeviceInfo, channel_key: str) -> tuple[str, ...]:
-    return (info.sgtin, info.device_id, channel_key.zfill(_KEY_WIDTH))
+    number = f"{_channel_number(channel_key):0{_KEY_WIDTH}d}"
+    return (info.sgtin, info.device_id, number, channel_key)
 
 
 def _valve_room_and_base(
