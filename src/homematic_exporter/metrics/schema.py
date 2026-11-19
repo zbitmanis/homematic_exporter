@@ -14,7 +14,7 @@ from typing import Literal, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from homematic_exporter.contracts import BatteryRecord, Contact, Device, Room, Valve
-from homematic_exporter.metrics.text import NAME_PATTERN, escape_text, hide_tokens
+from homematic_exporter.metrics.text import NAME_PATTERN, echo_text, hide_tokens
 from homematic_exporter.redact import scrub
 
 Scope = Literal["rooms", "devices", "valves", "contacts", "batteries"]
@@ -87,8 +87,8 @@ class Issue(NamedTuple):
 def make_issue(path: str, message: str) -> Issue:
     """An issue with secret-looking text scrubbed and overlong text cut (no secret values)."""
     return Issue(
-        scrub(hide_tokens(escape_text(path))),
-        scrub(hide_tokens(escape_text(message[:MAX_MESSAGE_LENGTH]))),
+        scrub(echo_text(path)),
+        scrub(echo_text(message[:MAX_MESSAGE_LENGTH])),
     )
 
 

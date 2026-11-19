@@ -47,3 +47,8 @@ def hide_tokens(value: str) -> str:
     not contain secrets in the first place (spec C13).
     """
     return _ASSIGNED.sub(REDACTED, _TOKEN_LIKE.sub(_hide_token, value))
+
+
+def echo_text(value: str) -> str:
+    """Escape unsafe characters, then redact token-like text: for anything echoed in an error."""
+    return hide_tokens(escape_text(value))

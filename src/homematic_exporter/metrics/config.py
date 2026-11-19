@@ -24,7 +24,7 @@ from homematic_exporter.metrics.schema import (
     quote,
     validate_metrics,
 )
-from homematic_exporter.metrics.text import escape_text, hide_tokens
+from homematic_exporter.metrics.text import echo_text
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def _issue_path(loc: tuple[int | str, ...]) -> str:
         if isinstance(part, int):
             out += f"[{part}]"
         else:
-            shown = hide_tokens(escape_text(part[:MAX_PATH_PART]))
+            shown = echo_text(part[:MAX_PATH_PART])
             out += ("." if out else "") + shown
     return out
 
@@ -148,7 +148,7 @@ def _size_issues(raw: dict[object, object]) -> list[Issue]:
     if isinstance(extract, dict):
         for key, section in extract.items():
             if isinstance(section, list | dict) and len(section) > MAX_SECTION_ENTRIES:
-                where = f"extract.{hide_tokens(escape_text(str(key)[:MAX_PATH_PART]))}"
+                where = f"extract.{echo_text(str(key)[:MAX_PATH_PART])}"
                 issues.append(Issue(where, f"too many entries ({len(section)} entries)"))
     return issues
 
