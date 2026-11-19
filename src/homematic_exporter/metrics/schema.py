@@ -88,7 +88,10 @@ def make_issue(path: str, message: str) -> Issue:
 
 def quote(value: object) -> str:
     """Repr of a value, cut to a short length so errors never echo big or hostile input."""
-    text = repr(value)
+    try:
+        text = repr(value)
+    except ValueError:  # an integer beyond Python's digit limit
+        text = "<unprintable value>"
     if len(text) > MAX_ECHO_LENGTH:
         return text[: MAX_ECHO_LENGTH - 3] + "..."
     return text
@@ -211,9 +214,13 @@ def _label_issues(i: int, d: MetricDef) -> list[Issue]:
     return issues
 
 
-def _value_issue(
-    i: int, d: MetricDef, extras: Collection[tuple[str, str]] | None
-) -> Issue | None:
+def _scale_issue(i: int, d: MetricDef) -> Issue | None:
+    if d.scale != 1.0 and d.transform.kind != "none":
+        return Issue(f"metrics[{i}].scale", "only applies with transform 'none'")
+    return None
+
+
+def _value_issue(i: int, d: MetricDef, extras: Collection[tuple[str, str]] | None) -> Issue | None:
     path = f"metrics[{i}].value"
     if d.value in SCOPE_VALUES[d.scope]:
         return None
@@ -229,7 +236,9 @@ def _value_issue(
     allowed = ", ".join(sorted(SCOPE_VALUES[d.scope]))
     extra_hint = "" if d.scope not in EXTRAS_SCOPE else ", extras.<key>"
     return Issue(
-        path, f"unknown value {quote(d.value)} for scope {quote(d.scope)}; allowed: {allowed}{extra_hint}"
+        path,
+        f"unknown value {quote(d.value)} for scope {quote(d.scope)};"
+        f" allowed: {allowed}{extra_hint}",
     )
 
 
@@ -242,6 +251,7 @@ def validate_metrics(
     issues = _name_issues(defs)
     for i, d in enumerate(defs):
         issues.extend(_label_issues(i, d))
-        if (issue := _value_issue(i, d, extras)) is not None:
-            issues.append(issue)
+        for issue in (_value_issue(i, d, extras), _scale_issue(i, d)):
+            if issue is not None:
+                issues.append(issue)
     return issues

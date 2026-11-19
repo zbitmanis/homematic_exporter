@@ -9,8 +9,10 @@
 |---|---|
 | `src/homematic_exporter/metrics/config.py` | `AppConfig` (composes `Tuning`, `ExtractConfig`, metric definitions), `load_config(path: Path | None = None)` with the R21 resolution (explicit path must exist; `None` = mount path then bundled default; never reads the environment), startup validation errors with key paths (R19) |
 | `src/homematic_exporter/metrics/registry.py` | `Registry.build(metric_defs, tuning, version)`/`update/record_success/record_error/exposition`, `render(config, snapshot, batteries, version)`; private `CollectorRegistry`; series removal; derived (6.5) and meta (6.6) metrics; `data_age` absent before first success |
+| `src/homematic_exporter/metrics/schema.py` | `MetricDef`, `Transform` (structural pydantic models), `validate_metrics` (semantic checks with key paths), `ConfigError` (added: keeps `config.py` and `registry.py` small and shares the checks between `load_config` and `Registry.build`) |
+| `src/homematic_exporter/metrics/series.py` | pure label/value computation per metric (added) |
 | `config/default-config.yaml` | **only the `metrics:` list** (spec 6.2-6.4); `extract`/`tuning` are fixed |
-| `tests/metrics/` | hand-built `Snapshot` golden exposition, validation errors, extras-only metric, fallback order |
+| `tests/metrics/` | hand-built `Snapshot` golden exposition (`golden/default_config.prom`), validation errors, extras-only metric, fallback order, hostile YAML, concurrency |
 
 ## Order of work
 1. Validation tests for every R19 error class (with key path), then `load_config`.
@@ -32,7 +34,7 @@ gate output plus a golden exposition file reviewed by the owner.
 
 ## Closing review task (mandatory, last task of this plan; specs/plan.md section A)
 The PR is not opened until every step is done or marked n/a with a reason. Paste each verdict into the PR description. After any HIGH/CRITICAL fix the same reviewer re-checks.
-- [ ] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
+- [x] R1 Gate (pip-audit and check_licenses clean; output in the PR description): `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
 - [ ] R2 `python-reviewer`
 - [ ] R3 `code-reviewer`
 - [ ] R4 `security-reviewer`
@@ -43,5 +45,13 @@ The PR is not opened until every step is done or marked n/a with a reason. Paste
 - [ ] R9 `doc-updater`: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
 - [ ] R10 owner PR review and squash merge
 
+## Deviations from this plan
+- Two files were added (`schema.py`, `series.py`), see the table.
+- `Registry.build` gained a keyword-only `clock` (default `time.time`) for tests; `parse_config(raw)` and `ConfigError` are exported next to `load_config`.
+- Steps 1-3 done in order; the default `metrics:` list holds the 14 entity metrics of 6.2-6.4.
+
 ## Requests (to the coordinator)
-_none yet_
+1. `config_models.Tuning.state_retention_days` has no upper bound (`ge=1` only); `timedelta(days=10**30)` in `state` raises `OverflowError`. `metrics` rejects values above 36500 when loading, but the contract should carry the bound (`le=36500`) with a spec 5.1 note.
+2. Spec section 3 (`metrics` row) and `docs/sbom/components.md`: mention `parse_config`, `ConfigError`, the `clock` keyword and that `scale` is valid with transform `none` only (spec 6.1 validation list).
+3. `config/default-config.yaml` header comment still says the `metrics` list "is filled by the `metrics` task"; it sits outside the metrics list, so it is left for the coordinator.
+4. Spec 6.6 does not say whether `homematic_last_successful_poll_timestamp_seconds` and `homematic_poll_duration_seconds` exist before the first success; this module omits both (like `data_age`). Confirm or change.

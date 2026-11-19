@@ -8,6 +8,7 @@ the environment: `app` passes `CONFIG_FILE` as `path`.
 import logging
 import os
 import stat
+from collections.abc import Hashable
 from pathlib import Path
 from typing import Literal
 
@@ -52,10 +53,13 @@ class AppConfig(BaseModel):
 class _StrictLoader(yaml.SafeLoader):
     """`SafeLoader` without aliases (anchor bombs) and without duplicate mapping keys."""
 
-    def compose_node(self, parent: yaml.Node | None, index: object) -> yaml.Node | None:
+    def compose_node(self, parent: yaml.Node | None, index: int) -> yaml.Node | None:
         if self.check_event(yaml.AliasEvent):
             raise yaml.constructor.ConstructorError(
-                None, None, "aliases are not allowed", self.peek_event().start_mark
+                None,
+                None,
+                "aliases are not allowed",
+                self.peek_event().start_mark,  # type: ignore[no-untyped-call]
             )
         return super().compose_node(parent, index)
 
@@ -63,7 +67,9 @@ class _StrictLoader(yaml.SafeLoader):
         seen: set[object] = set()
         for key_node, _ in node.value:
             key = self.construct_object(key_node, deep=True)
-            if key in seen:  # an unhashable key already failed in construct_object
+            if not isinstance(key, Hashable):
+                continue  # the parent class rejects it with a proper error
+            if key in seen:
                 raise yaml.constructor.ConstructorError(
                     None, None, f"duplicate key {quote(key)}", key_node.start_mark
                 )
@@ -72,8 +78,9 @@ class _StrictLoader(yaml.SafeLoader):
 
 
 def _parse_yaml(text: str) -> object:
-    loader = _StrictLoader(text)
+    loader: _StrictLoader | None = None
     try:
+        loader = _StrictLoader(text)  # the constructor already rejects unreadable characters
         return loader.get_single_data()
     except yaml.MarkedYAMLError as exc:
         mark = exc.problem_mark
@@ -83,8 +90,11 @@ def _parse_yaml(text: str) -> object:
         raise ConfigError([Issue("", "invalid YAML (unreadable characters)")]) from None
     except RecursionError:
         raise ConfigError([Issue("", "YAML is nested too deeply")]) from None
+    except ValueError:  # e.g. an integer literal beyond Python's digit limit
+        raise ConfigError([Issue("", "invalid YAML (unusable number)")]) from None
     finally:
-        loader.dispose()
+        if loader is not None:
+            loader.dispose()
 
 
 def _issue_path(loc: tuple[int | str, ...]) -> str:
@@ -121,9 +131,7 @@ def parse_config(raw: object) -> AppConfig:
     extras = {(e.scope, e.key) for e in config.extract.extras}
     issues = validate_metrics(config.metrics, extras)
     if config.tuning.state_retention_days > MAX_RETENTION_DAYS:
-        issues.append(
-            Issue("tuning.state_retention_days", f"must be at most {MAX_RETENTION_DAYS}")
-        )
+        issues.append(Issue("tuning.state_retention_days", f"must be at most {MAX_RETENTION_DAYS}"))
     if issues:
         raise ConfigError(issues)
     return config

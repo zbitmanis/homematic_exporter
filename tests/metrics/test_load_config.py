@@ -140,6 +140,26 @@ def test_alias_bomb_is_rejected_quickly(write_config: Any) -> None:
         load_config(write_config("\n".join(lines) + "\n"))
 
 
+def test_unhashable_mapping_keys_are_a_config_error(write_config: Any) -> None:
+    with pytest.raises(ConfigError, match="line"):
+        load_config(write_config("? [a, b]\n: x\n"))
+
+
+def test_huge_integer_literals_are_a_config_error(write_config: Any) -> None:
+    with pytest.raises(ConfigError, match="number"):
+        load_config(write_config("version: 1\nx: " + "9" * 5000 + "\n"))
+
+
+def test_control_characters_are_a_config_error(write_config: Any) -> None:
+    with pytest.raises(ConfigError, match="invalid YAML"):
+        load_config(write_config("version: \x00\n"))
+
+
+def test_merge_keys_are_not_supported(write_config: Any) -> None:
+    with pytest.raises(ConfigError):
+        load_config(write_config("version: 1\n<<: {a: 1}\n"))
+
+
 def test_python_tags_are_rejected(write_config: Any) -> None:
     with pytest.raises(ConfigError):
         load_config(write_config("version: !!python/object/apply:os.system ['true']\n"))
@@ -151,7 +171,7 @@ def test_deep_nesting_is_a_config_error_not_a_crash(write_config: Any) -> None:
 
 
 def test_non_string_keys_are_rejected(raw_config: dict[str, Any], write_config: Any) -> None:
-    raw_config[1] = "x"
+    raw_config[1] = "x"  # type: ignore[index]
     with pytest.raises(ConfigError, match=r"\[1\]"):
         load_config(write_config(raw_config))
 
@@ -159,7 +179,11 @@ def test_non_string_keys_are_rejected(raw_config: dict[str, Any], write_config: 
 def test_non_finite_yaml_numbers_are_rejected(
     raw_config: dict[str, Any], write_config: Any
 ) -> None:
-    text = write_config(raw_config).read_text().replace("heat_demand_min_position: 0.0", "heat_demand_min_position: .nan")
+    text = (
+        write_config(raw_config)
+        .read_text()
+        .replace("heat_demand_min_position: 0.0", "heat_demand_min_position: .nan")
+    )
     with pytest.raises(ConfigError, match="tuning.heat_demand_min_position"):
         load_config(write_config(text, "nan.yaml"))
 

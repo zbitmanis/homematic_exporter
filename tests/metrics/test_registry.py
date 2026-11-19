@@ -70,7 +70,9 @@ def test_scale_multiplies_numeric_values() -> None:
 def test_transforms(transform: object, raw: object, expected: float) -> None:
     r = reg(metric(name="homematic_room_probe_state", value="extras.probe", transform=transform))
     r.update(snapshot(rooms=(room(extras={"probe": raw}),)))
-    assert only(parse(r.exposition()), "homematic_room_probe_state") == {k(room="kitchen"): expected}
+    assert only(parse(r.exposition()), "homematic_room_probe_state") == {
+        k(room="kitchen"): expected
+    }
 
 
 @pytest.mark.parametrize(
@@ -145,12 +147,26 @@ def test_extras_missing_on_an_entity_means_no_series_for_it() -> None:
 def test_device_valve_and_contact_scopes_carry_all_three_labels() -> None:
     labels = ["room", "device_type", "device"]
     r = reg(
-        metric(name="homematic_device_low_battery", scope="devices", value="low_battery",
-               transform="bool", labels=labels),
-        metric(name="homematic_valve_position_ratio", scope="valves", value="position_ratio",
-               labels=labels),
-        metric(name="homematic_contact_open", scope="contacts", value="window_state",
-               transform={"in": ["OPEN", "TILTED"]}, labels=labels),
+        metric(
+            name="homematic_device_low_battery",
+            scope="devices",
+            value="low_battery",
+            transform="bool",
+            labels=labels,
+        ),
+        metric(
+            name="homematic_valve_position_ratio",
+            scope="valves",
+            value="position_ratio",
+            labels=labels,
+        ),
+        metric(
+            name="homematic_contact_open",
+            scope="contacts",
+            value="window_state",
+            transform={"in": ["OPEN", "TILTED"]},
+            labels=labels,
+        ),
     )
     r.update(
         snapshot(
@@ -172,10 +188,18 @@ def test_device_valve_and_contact_scopes_carry_all_three_labels() -> None:
 def test_battery_metrics_read_battery_records() -> None:
     labels = ["room", "device_type", "device"]
     r = reg(
-        metric(name="homematic_device_battery_low_since_timestamp_seconds", scope="batteries",
-               value="low_since", labels=labels),
-        metric(name="homematic_device_battery_last_replaced_timestamp_seconds",
-               scope="batteries", value="last_replaced", labels=labels),
+        metric(
+            name="homematic_device_battery_low_since_timestamp_seconds",
+            scope="batteries",
+            value="low_since",
+            labels=labels,
+        ),
+        metric(
+            name="homematic_device_battery_last_replaced_timestamp_seconds",
+            scope="batteries",
+            value="last_replaced",
+            labels=labels,
+        ),
     )
     records = (
         BatteryRecord("a b", "a", "wall-thermostat", 1000.0, None),
@@ -204,8 +228,9 @@ def test_only_whitelisted_label_names_are_ever_exported() -> None:
 def test_duplicate_label_sets_keep_the_first_series_and_warn_once(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    r = reg(metric(name="homematic_device_rssi_dbm", scope="devices", value="rssi_dbm"
-                   , labels=["room"]))
+    r = reg(
+        metric(name="homematic_device_rssi_dbm", scope="devices", value="rssi_dbm", labels=["room"])
+    )
     snap = snapshot(devices=(device("a", rssi_dbm=-50), device("b", rssi_dbm=-70)))
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         r.update(snap)
@@ -320,8 +345,15 @@ def test_errors_are_counted_and_do_not_touch_the_success_timestamp() -> None:
 
 @pytest.mark.parametrize(
     ("timestamp", "duration"),
-    [(math.nan, 1.0), (math.inf, 1.0), (-1.0, 1.0), (5e9, 1.0), (1000.0, math.nan),
-     (1000.0, -0.1), (1000.0, math.inf)],
+    [
+        (math.nan, 1.0),
+        (math.inf, 1.0),
+        (-1.0, 1.0),
+        (5e9, 1.0),
+        (1000.0, math.nan),
+        (1000.0, -0.1),
+        (1000.0, math.inf),
+    ],
 )
 def test_record_success_rejects_invalid_numbers_without_changing_state(
     timestamp: float, duration: float
@@ -369,8 +401,11 @@ def test_warning_streak_resets_when_series_return(caplog: pytest.LogCaptureFixtu
 
 
 def test_no_warning_when_the_scope_has_no_entities(caplog: pytest.LogCaptureFixture) -> None:
-    r = reg(metric(name="homematic_contact_open", scope="contacts", value="window_state",
-                   labels=["room"]))
+    r = reg(
+        metric(
+            name="homematic_contact_open", scope="contacts", value="window_state", labels=["room"]
+        )
+    )
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         for _ in range(3):
             r.update(snapshot())
@@ -399,10 +434,12 @@ def test_logs_do_not_contain_label_values(caplog: pytest.LogCaptureFixture) -> N
 
 def test_scrapes_during_updates_always_see_one_consistent_snapshot() -> None:
     r = reg(metric(), metric(name="homematic_room_setpoint_celsius", value="setpoint_celsius"))
-    a = snapshot(rooms=tuple(room(f"a{i}", temperature_celsius=1.0, setpoint_celsius=1.0)
-                             for i in range(30)))
-    b = snapshot(rooms=tuple(room(f"b{i}", temperature_celsius=2.0, setpoint_celsius=2.0)
-                             for i in range(30)))
+    a = snapshot(
+        rooms=tuple(room(f"a{i}", temperature_celsius=1.0, setpoint_celsius=1.0) for i in range(30))
+    )
+    b = snapshot(
+        rooms=tuple(room(f"b{i}", temperature_celsius=2.0, setpoint_celsius=2.0) for i in range(30))
+    )
     r.update(a)
     stop = threading.Event()
     failures: list[str] = []

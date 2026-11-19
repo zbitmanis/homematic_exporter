@@ -20,11 +20,9 @@ def with_metrics(raw: dict[str, Any], *entries: dict[str, Any]) -> dict[str, Any
 
 
 def test_valid_config_parses(raw_config: dict[str, Any]) -> None:
-    config = parse_config(
-        with_metrics(raw_config, metric(scale=0.01, transform={"in": ["OPEN", "TILTED"]}))
-    )
+    config = parse_config(with_metrics(raw_config, metric(scale=0.01)))
     assert config.metrics[0].scale == 0.01
-    assert config.metrics[0].transform.kind == "in"
+    assert config.metrics[0].transform.kind == "none"
     assert config.extract.system_room == "system"
 
 
@@ -32,7 +30,9 @@ def test_spec_example_error_for_unknown_label(raw_config: dict[str, Any]) -> Non
     entries = [
         metric(name=f"homematic_room_thing{i}_celsius", labels=["room"]) for i in range(3)
     ] + [metric(labels=["room", "sgtin"])]
-    assert "metrics[3].labels[1]: unknown label 'sgtin'" in errors(with_metrics(raw_config, *entries))
+    assert "metrics[3].labels[1]: unknown label 'sgtin'" in errors(
+        with_metrics(raw_config, *entries)
+    )
 
 
 def test_label_must_be_available_for_the_scope(raw_config: dict[str, Any]) -> None:
@@ -109,7 +109,9 @@ def test_extras_value_needs_a_matching_extract_entry(raw_config: dict[str, Any])
     raw_config["extract"]["extras"] = [{"scope": "room", "key": "boost", "field": "boostDuration"}]
     ok = metric(name="homematic_room_boost_seconds", value="extras.boost")
     assert parse_config(with_metrics(raw_config, ok)).metrics[0].value == "extras.boost"
-    wrong_scope = metric(name="homematic_device_boost_seconds", scope="devices", value="extras.boost")
+    wrong_scope = metric(
+        name="homematic_device_boost_seconds", scope="devices", value="extras.boost"
+    )
     unknown = metric(name="homematic_room_other_seconds", value="extras.other")
     msg = errors(with_metrics(raw_config, wrong_scope, unknown))
     assert "metrics[0].value: no extract.extras entry with scope 'device' and key 'boost'" in msg
@@ -203,7 +205,7 @@ def test_errors_are_collected_and_capped(raw_config: dict[str, Any]) -> None:
 
 
 def test_errors_never_echo_secret_looking_values(raw_config: dict[str, Any]) -> None:
-    secret = "token=SUPERSECRET123"
+    secret = "token=SUPERSECRET123"  # noqa: S105 (a fake value that must be scrubbed)
     sgtin = "3014F711A000" + "0123456789AB"
     msg = errors(
         with_metrics(

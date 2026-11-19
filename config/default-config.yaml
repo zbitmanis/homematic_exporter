@@ -43,4 +43,40 @@ extract:
     - channel_type: SHUTTER_CONTACT_CHANNEL
       fields: { window_state: windowState }
   extras: []                        # e.g. - { scope: room, key: boost_duration, field: boostDuration }
-metrics: []                         # defined by the metrics task (spec 6)
+metrics:                            # spec 6.1-6.4: one entry per exported series family
+  # Rooms (label: room)
+  - { name: homematic_room_temperature_celsius, help: Room temperature, type: gauge,
+      scope: rooms, value: temperature_celsius, labels: [room] }
+  - { name: homematic_room_setpoint_celsius, help: Room target temperature, type: gauge,
+      scope: rooms, value: setpoint_celsius, labels: [room] }
+  - { name: homematic_room_humidity_ratio, help: Room relative humidity (0-1), type: gauge,
+      scope: rooms, value: humidity, scale: 0.01, labels: [room] }
+  - { name: homematic_room_automatic_mode, help: 1 if the room is in automatic mode, type: gauge,
+      scope: rooms, value: control_mode, transform: { equals: AUTOMATIC }, labels: [room] }
+  - { name: homematic_room_window_open, help: 1 if the room window is open or tilted, type: gauge,
+      scope: rooms, value: window_state, transform: { in: [OPEN, TILTED] }, labels: [room] }
+  # Valves and contacts (labels: room, device_type, device)
+  - { name: homematic_valve_position_ratio, help: "Valve position (0 closed, 1 fully open)", type: gauge,
+      scope: valves, value: position_ratio, labels: [room, device_type, device] }
+  - { name: homematic_valve_actual_temperature_celsius, help: Temperature measured at the valve,
+      type: gauge, scope: valves, value: actual_temperature_celsius,
+      labels: [room, device_type, device] }
+  - { name: homematic_contact_open, help: 1 if the door or window contact is open or tilted,
+      type: gauge, scope: contacts, value: window_state, transform: { in: [OPEN, TILTED] },
+      labels: [room, device_type, device] }
+  # Devices (labels: room, device_type, device)
+  - { name: homematic_device_low_battery, help: 1 if the device reports a low battery, type: gauge,
+      scope: devices, value: low_battery, transform: bool, labels: [room, device_type, device] }
+  - { name: homematic_device_unreachable, help: 1 if the device is unreachable, type: gauge,
+      scope: devices, value: unreachable, transform: bool, labels: [room, device_type, device] }
+  - { name: homematic_device_undervoltage, help: 1 if the device reports undervoltage, type: gauge,
+      scope: devices, value: undervoltage, transform: bool, labels: [room, device_type, device] }
+  - { name: homematic_device_rssi_dbm, help: Radio signal strength in dBm, type: gauge,
+      scope: devices, value: rssi_dbm, labels: [room, device_type, device] }
+  # Battery history (labels: room, device_type, device); kept by the state module
+  - { name: homematic_device_battery_low_since_timestamp_seconds,
+      help: Unix time the battery was first seen low (approximate on first sight), type: gauge,
+      scope: batteries, value: low_since, labels: [room, device_type, device] }
+  - { name: homematic_device_battery_last_replaced_timestamp_seconds,
+      help: Unix time the battery was last seen going from low to ok, type: gauge,
+      scope: batteries, value: last_replaced, labels: [room, device_type, device] }

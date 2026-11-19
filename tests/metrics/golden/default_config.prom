@@ -1,0 +1,72 @@
+# HELP homematic_room_temperature_celsius Room temperature
+# TYPE homematic_room_temperature_celsius gauge
+homematic_room_temperature_celsius{room="kitchen"} 21.5
+homematic_room_temperature_celsius{room="living"} 20.0
+# HELP homematic_room_setpoint_celsius Room target temperature
+# TYPE homematic_room_setpoint_celsius gauge
+homematic_room_setpoint_celsius{room="girts"} 22.0
+homematic_room_setpoint_celsius{room="kitchen"} 22.0
+homematic_room_setpoint_celsius{room="living"} 22.0
+# HELP homematic_room_humidity_ratio Room relative humidity (0-1)
+# TYPE homematic_room_humidity_ratio gauge
+homematic_room_humidity_ratio{room="kitchen"} 0.55
+homematic_room_humidity_ratio{room="living"} 0.485
+# HELP homematic_room_automatic_mode 1 if the room is in automatic mode
+# TYPE homematic_room_automatic_mode gauge
+homematic_room_automatic_mode{room="girts"} 1.0
+homematic_room_automatic_mode{room="kitchen"} 1.0
+homematic_room_automatic_mode{room="living"} 0.0
+# HELP homematic_room_window_open 1 if the room window is open or tilted
+# TYPE homematic_room_window_open gauge
+homematic_room_window_open{room="kitchen"} 0.0
+homematic_room_window_open{room="living"} 1.0
+# HELP homematic_valve_position_ratio Valve position (0 closed, 1 fully open)
+# TYPE homematic_valve_position_ratio gauge
+homematic_valve_position_ratio{device="kitchen floor-valve",device_type="floor-valve",room="kitchen"} 0.35
+homematic_valve_position_ratio{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 0.0
+# HELP homematic_valve_actual_temperature_celsius Temperature measured at the valve
+# TYPE homematic_valve_actual_temperature_celsius gauge
+homematic_valve_actual_temperature_celsius{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 19.5
+# HELP homematic_contact_open 1 if the door or window contact is open or tilted
+# TYPE homematic_contact_open gauge
+homematic_contact_open{device="kitchen door-window-contact",device_type="door-window-contact",room="kitchen"} 1.0
+# HELP homematic_device_low_battery 1 if the device reports a low battery
+# TYPE homematic_device_low_battery gauge
+homematic_device_low_battery{device="girts temp-humidity-display",device_type="temp-humidity-display",room="girts"} 0.0
+homematic_device_low_battery{device="kitchen wall-thermostat",device_type="wall-thermostat",room="kitchen"} 0.0
+homematic_device_low_battery{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 1.0
+# HELP homematic_device_unreachable 1 if the device is unreachable
+# TYPE homematic_device_unreachable gauge
+homematic_device_unreachable{device="girts temp-humidity-display",device_type="temp-humidity-display",room="girts"} 1.0
+homematic_device_unreachable{device="kitchen wall-thermostat",device_type="wall-thermostat",room="kitchen"} 0.0
+homematic_device_unreachable{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 0.0
+homematic_device_unreachable{device="system access-point",device_type="access-point",room="system"} 0.0
+# HELP homematic_device_undervoltage 1 if the device reports undervoltage
+# TYPE homematic_device_undervoltage gauge
+homematic_device_undervoltage{device="girts temp-humidity-display",device_type="temp-humidity-display",room="girts"} 0.0
+homematic_device_undervoltage{device="kitchen wall-thermostat",device_type="wall-thermostat",room="kitchen"} 0.0
+homematic_device_undervoltage{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 0.0
+homematic_device_undervoltage{device="system access-point",device_type="access-point",room="system"} 1.0
+# HELP homematic_device_rssi_dbm Radio signal strength in dBm
+# TYPE homematic_device_rssi_dbm gauge
+homematic_device_rssi_dbm{device="kitchen wall-thermostat",device_type="wall-thermostat",room="kitchen"} -60.0
+homematic_device_rssi_dbm{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} -81.0
+homematic_device_rssi_dbm{device="system access-point",device_type="access-point",room="system"} -60.0
+# HELP homematic_device_battery_low_since_timestamp_seconds Unix time the battery was first seen low (approximate on first sight)
+# TYPE homematic_device_battery_low_since_timestamp_seconds gauge
+homematic_device_battery_low_since_timestamp_seconds{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 1.76e+09
+# HELP homematic_device_battery_last_replaced_timestamp_seconds Unix time the battery was last seen going from low to ok
+# TYPE homematic_device_battery_last_replaced_timestamp_seconds gauge
+homematic_device_battery_last_replaced_timestamp_seconds{device="living radiator-thermostat",device_type="radiator-thermostat",room="living"} 1.75e+09
+# HELP homematic_valves_open Valves open above the heat demand threshold
+# TYPE homematic_valves_open gauge
+homematic_valves_open 1.0
+# HELP homematic_heat_demand 1 if any valve is open (boiler demand proxy)
+# TYPE homematic_heat_demand gauge
+homematic_heat_demand 1.0
+# HELP homematic_poll_errors_total Failed polls
+# TYPE homematic_poll_errors_total counter
+homematic_poll_errors_total 0.0
+# HELP homematic_exporter_build_info Build information
+# TYPE homematic_exporter_build_info gauge
+homematic_exporter_build_info{version="1.2.3"} 1.0

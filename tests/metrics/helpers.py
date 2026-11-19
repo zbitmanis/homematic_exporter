@@ -44,7 +44,9 @@ def device(name: str = "kitchen wall-thermostat", room_name: str = "kitchen", **
     return Device(**base)
 
 
-def valve(device_name: str = "kitchen floor-valve", position: float | None = 0.4, **kw: Any) -> Valve:
+def valve(
+    device_name: str = "kitchen floor-valve", position: float | None = 0.4, **kw: Any
+) -> Valve:
     base: dict[str, Any] = {
         "room": "kitchen",
         "device_type": "floor-valve",
@@ -90,4 +92,3 @@ def parse(exposition: bytes) -> Series:
 
 def only(series: Series, name: str) -> Mapping[tuple[tuple[str, str], ...], float]:
     return series.get(name, {})
-
