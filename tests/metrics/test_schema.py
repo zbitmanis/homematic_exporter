@@ -229,3 +229,11 @@ def test_unknown_key_names_are_truncated_and_scrubbed(raw_config: dict[str, Any]
     msg = errors(raw_config)
     assert "SECRETVALUE" not in msg
     assert "k" * 100 not in msg
+
+
+@pytest.mark.parametrize("transform", ["bool", {"equals": "A"}, {"in": ["A"]}])
+def test_scale_only_applies_to_the_none_transform(
+    raw_config: dict[str, Any], transform: object
+) -> None:
+    msg = errors(with_metrics(raw_config, metric(scale=0.5, transform=transform)))
+    assert "metrics[0].scale: only applies with transform 'none'" in msg
