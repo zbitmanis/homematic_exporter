@@ -30,6 +30,7 @@ from homematic_exporter.contracts import (
 # Channel types that carry the battery and radio fields of a device (spec 4).
 _BASE_PREFIX = "DEVICE_BASE"
 _BASE_TYPES = frozenset({"DEVICE_OPERATIONLOCK", "ACCESS_CONTROLLER_CHANNEL"})
+MAX_NAME_CHARS = 128  # room names and unmapped device types are cut to this
 _UNKNOWN_TYPE = "unknown"
 _RSSI_LIMIT = 1000  # |dBm| beyond this is garbage, not a measurement
 _NO_SGTIN = ""

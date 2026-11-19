@@ -163,7 +163,9 @@ async def test_collision_warning_once_per_new_collision(
     await source.fetch("suffix")
     await source.fetch("suffix")  # same collision again: silent
     warnings = [
-        r for r in caplog.records if r.levelno == logging.WARNING and "collision" in r.getMessage()
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "name collision" in r.getMessage()
     ]
     assert len(warnings) == 1
     assert "kitchen wall-thermostat" in warnings[0].getMessage()
@@ -174,7 +176,9 @@ async def test_collision_warning_once_per_new_collision(
     write(path, collision_state)  # ... and back: a new collision, warn again
     await source.fetch("suffix")
     warnings = [
-        r for r in caplog.records if r.levelno == logging.WARNING and "collision" in r.getMessage()
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "name collision" in r.getMessage()
     ]
     assert len(warnings) == 2
 
@@ -226,3 +230,32 @@ async def test_hostile_model_string_is_bounded_in_the_log(
 async def test_path_with_nul_byte_is_upstream_error(default_extract: ExtractConfig) -> None:
     with pytest.raises(UpstreamError):
         await make(Path("a\0b.json"), default_extract).fetch()
+
+
+@pytest.mark.parametrize("content", [b"{bad", b"[" * 200_000, b'{"x": NaN}'])
+async def test_errors_leave_no_context(
+    tmp_path: Path, default_extract: ExtractConfig, content: bytes
+) -> None:
+    path = tmp_path / "bad.json"
+    path.write_bytes(content)
+    with pytest.raises(UpstreamError) as err:
+        await make(path, default_extract).fetch()
+    assert err.value.__context__ is None
+    assert err.value.__cause__ is None
+
+
+async def test_open_errors_leave_no_context(tmp_path: Path, default_extract: ExtractConfig) -> None:
+    with pytest.raises(UpstreamError) as err:
+        await make(tmp_path / "missing.json", default_extract).fetch()
+    assert err.value.__context__ is None
+
+
+async def test_sgtin_straddling_the_log_cut_is_not_partially_logged(
+    tmp_path: Path, default_extract: ExtractConfig, caplog: pytest.LogCaptureFixture
+) -> None:
+    sgtin = "0123456789ABCDEF01234567"
+    model = "M" * 60 + sgtin  # the old 64-char cut would keep only 4 hex digits of the SGTIN
+    state = {"groups": {}, "devices": {"a": {"modelType": model}}}
+    caplog.set_level(logging.DEBUG)
+    await make(write(tmp_path / "s.json", state), default_extract).fetch()
+    assert "0123" not in caplog.text

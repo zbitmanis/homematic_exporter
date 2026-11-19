@@ -1,7 +1,7 @@
 import copy
-import json
 import logging
 import math
+import time
 from typing import Any
 
 import pytest
@@ -16,7 +16,11 @@ from homematic_exporter.contracts import (
     UpstreamError,
     Valve,
 )
-from homematic_exporter.source.parser import parse_snapshot, parse_with_report
+from homematic_exporter.source.parser import (
+    MAX_NAME_CHARS,
+    parse_snapshot,
+    parse_with_report,
+)
 
 from .conftest import device, make_state
 
@@ -404,10 +408,12 @@ def test_floor_valve_in_two_rooms_is_skipped(default_extract: ExtractConfig) -> 
     assert parse_snapshot(state, NOW, default_extract).valves == ()
 
 
-def test_huge_input_is_linear_enough(default_extract: ExtractConfig) -> None:
+def test_huge_input_stays_fast(default_extract: ExtractConfig) -> None:
     devices = {f"D{i}": device("HmIP-STH", lowBat=False) for i in range(2000)}
     state = make_state(**devices)
+    start = time.perf_counter()
     snap = parse_snapshot(state, NOW, default_extract, "suffix")
+    assert time.perf_counter() - start < 2.0
     assert len(snap.devices) == 2000
     assert len({d.name for d in snap.devices}) == 2000
 
@@ -423,13 +429,13 @@ def test_deeply_nested_values_are_harmless(default_extract: ExtractConfig) -> No
     assert snap.rooms[0].temperature_celsius is None
 
 
-def test_result_is_json_free_of_identifiers(
+def test_result_contains_no_identifiers(
     mini_state: dict[str, Any], default_extract: ExtractConfig
 ) -> None:
-    snap = parse_snapshot(mini_state, NOW, default_extract)
-    text = json.dumps(repr(snap))
-    assert "SGTIN" not in text
-    assert "ID-0" not in text
+    text = repr(parse_snapshot(mini_state, NOW, default_extract))
+    for dev_id, dev in mini_state["devices"].items():
+        assert dev_id not in text
+        assert dev["serializedGlobalTradeItemNumber"] not in text
 
 
 def test_parser_logs_nothing_itself(
@@ -440,3 +446,140 @@ def test_parser_logs_nothing_itself(
     with caplog.at_level(logging.DEBUG):
         parse_snapshot(collision_state, NOW, default_extract, "suffix")
     assert caplog.records == []  # logging once per collision is the sources' job
+
+
+# --- fix round 1 -------------------------------------------------------------------------------
+
+
+def _printable(text: str) -> bool:
+    return text.isprintable()
+
+
+def test_long_and_control_character_labels_are_bounded_and_printable(
+    default_extract: ExtractConfig,
+) -> None:
+    state = make_state(A=device())
+    state["groups"]["G1"]["label"] = "x" * 5000
+    state["groups"]["G2"] = {
+        "id": "G2",
+        "type": "HEATING",
+        "label": "a\nb\x1b[31mc",
+        "channels": [],
+    }
+    snap = parse_snapshot(state, NOW, default_extract)
+    for room in snap.rooms:
+        assert len(room.name) <= MAX_NAME_CHARS
+        assert room.name.isprintable()
+    for dev in snap.devices:
+        assert dev.name.isprintable()
+        assert len(dev.name) <= 2 * MAX_NAME_CHARS + 1
+    assert "\x1b" not in "".join(r.name for r in snap.rooms)
+
+
+def test_hostile_unmapped_model_is_bounded_and_printable(default_extract: ExtractConfig) -> None:
+    state = make_state(A={"modelType": "M" * 5000 + "\n\x1b[0m"})
+    snap, report = parse_with_report(state, NOW, default_extract)
+    assert len(snap.devices[0].device_type) <= MAX_NAME_CHARS
+    assert snap.devices[0].device_type.isprintable()
+    assert all(len(m) <= MAX_NAME_CHARS and m.isprintable() for m in report.unmapped_models)
+
+
+def test_collision_error_message_is_bounded_for_1000_collisions(
+    default_extract: ExtractConfig,
+) -> None:
+    state = make_state()
+    for i in range(1000):
+        for suffix in ("a", "b"):
+            gid = f"H{i}{suffix}"
+            state["groups"][gid] = {
+                "id": gid,
+                "type": "HEATING",
+                "label": f"{i}" + "L" * 5000,
+                "channels": [],
+            }
+    with pytest.raises(NameCollisionError) as err:
+        parse_snapshot(state, NOW, default_extract, "error")
+    assert len(str(err.value)) < 10_000
+    assert str(err.value).isprintable()
+
+
+def test_hostile_channel_key_does_not_raise(default_extract: ExtractConfig) -> None:
+    state = make_state(A=device(lowBat=True))
+    state["devices"]["A"]["functionalChannels"]["9" * 5000] = {"functionalChannelType": "X"}
+    state["devices"]["A"]["functionalChannels"]["\u0661"] = {"functionalChannelType": "X"}
+    snap = parse_snapshot(state, NOW, default_extract)
+    assert snap.devices[0].low_battery is True
+
+
+def test_not_a_configuration_error_bodies_name_type_and_keys(
+    default_extract: ExtractConfig,
+) -> None:
+    with pytest.raises(UpstreamError) as err:
+        parse_snapshot([1, 2], NOW, default_extract)
+    assert "list" in err.value.body
+    with pytest.raises(UpstreamError) as err:
+        parse_snapshot({"errorCode": "SECRETVALUE", "devices": {}}, NOW, default_extract)
+    assert "errorCode" in err.value.body
+    assert "SECRETVALUE" not in err.value.body
+    assert len(err.value.body) < 1000
+
+
+def test_error_body_with_many_hostile_keys_is_bounded(default_extract: ExtractConfig) -> None:
+    raw = {f"k{i}" + "x" * 500 + "\n": 1 for i in range(10_000)}
+    with pytest.raises(UpstreamError) as err:
+        parse_snapshot(raw, NOW, default_extract)
+    assert len(err.value.body) < 2000
+    assert err.value.body.isprintable()
+
+
+def test_suffix_never_steals_a_name_that_really_exists(default_extract: ExtractConfig) -> None:
+    state = make_state()
+    for gid, label in (("G1", "a"), ("G2", "a"), ("G3", "a-2"), ("G4", "a-2")):
+        state["groups"][gid] = {"id": gid, "type": "HEATING", "label": label, "channels": []}
+    del state["groups"]["G1"]["channels"][:]
+    state["groups"]["G1"]["label"] = "a"
+    snap = parse_snapshot(state, NOW, default_extract, "suffix")
+    assert [r.name for r in snap.rooms] == ["a", "a-3", "a-2", "a-2-2"]
+
+
+def test_many_distinct_unmapped_models_are_fast(default_extract: ExtractConfig) -> None:
+    devices = {f"D{i}": {"modelType": f"M{i}"} for i in range(30_000)}
+    state = make_state(**devices)
+    start = time.perf_counter()
+    parse_snapshot(state, NOW, default_extract, "suffix")
+    assert time.perf_counter() - start < 3.0
+
+
+def test_unlabelled_heating_group_is_not_a_room_so_the_device_gets_the_labelled_one(
+    default_extract: ExtractConfig,
+) -> None:
+    state = make_state(A=device())
+    state["groups"]["U"] = {"id": "U", "type": "HEATING", "channels": [{"deviceId": "A"}]}
+    snap = parse_snapshot(state, NOW, default_extract)
+    assert snap.devices[0].room == "lab"
+
+
+def test_model_with_surrounding_whitespace_is_unmapped(default_extract: ExtractConfig) -> None:
+    state = make_state(A={"modelType": " HmIP-STH "})
+    snap, report = parse_with_report(state, NOW, default_extract)
+    assert snap.devices[0].device_type == "hmip-sth"
+    assert len(report.unmapped_models) == 1
+
+
+def test_system_room_device_collides_with_a_real_room_named_system(
+    default_extract: ExtractConfig,
+) -> None:
+    state = make_state(A=device("HmIP-WTH-1"), B=device("HmIP-WTH-1"))
+    state["groups"]["G1"]["label"] = "system"
+    state["groups"]["G1"]["channels"].pop()  # B is in no room: falls back to the system room
+    with pytest.raises(NameCollisionError) as err:
+        parse_snapshot(state, NOW, default_extract, "error")
+    assert err.value.names == ("system wall-thermostat",)
+    snap = parse_snapshot(state, NOW, default_extract, "suffix")
+    assert {d.name for d in snap.devices} == {"system wall-thermostat", "system wall-thermostat-2"}
+
+
+def test_package_exports_parse_with_report() -> None:
+    import homematic_exporter.source as pkg
+
+    assert "parse_with_report" in pkg.__all__

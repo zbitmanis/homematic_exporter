@@ -155,7 +155,92 @@ async def test_unknown_error_has_no_status_and_no_traceback_chain(
     assert err.value.status is None
     assert TOKEN not in err.value.body
     assert err.value.__cause__ is None
-    assert err.value.__suppress_context__ is True
+    assert err.value.__context__ is None
+
+
+def _real_errors(default_extract: ExtractConfig) -> list[BaseException]:
+    conn = importlib.import_module("homematicip.exceptions.connection_exceptions")
+    httpx2 = importlib.import_module("httpx2")
+    msg = f"failure {TOKEN} {ACCESS_POINT}"
+    return [
+        conn.HmipAuthenticationError(msg),
+        conn.HmipConnectionError(msg),
+        conn.HmipThrottlingError(msg),
+        httpx2.ConnectError(msg),
+    ]
+
+
+@pytest.mark.parametrize("index", range(4))
+async def test_real_library_errors_leave_no_context_and_no_secret(
+    index: int, default_extract: ExtractConfig
+) -> None:
+    home = FakeHome()
+    home.download_error = _real_errors(default_extract)[index]
+    with pytest.raises(UpstreamError) as err:
+        await make(home, default_extract).fetch()
+    assert err.value.__context__ is None
+    assert err.value.__cause__ is None
+    assert TOKEN not in err.value.body + str(err.value)
+    assert ACCESS_POINT not in err.value.body + str(err.value)
+
+
+async def test_init_error_leaves_no_context(default_extract: ExtractConfig) -> None:
+    with pytest.raises(UpstreamError) as err:
+        await make(FakeHome(init_error=OSError(TOKEN)), default_extract).fetch()
+    assert err.value.__context__ is None
+
+
+async def test_timeout_body_names_the_timeout(default_extract: ExtractConfig) -> None:
+    home = FakeHome()
+    home.hang_download = True
+    with pytest.raises(UpstreamError) as err:
+        await make(home, default_extract, timeout=0.05).fetch()
+    assert "0.05" in err.value.body
+    assert err.value.__context__ is None
+
+
+async def test_payload_error_body_names_the_type_and_keys(default_extract: ExtractConfig) -> None:
+    with pytest.raises(UpstreamError) as err:
+        await make(FakeHome({"errorCode": "X", "secretvalue": "v"}), default_extract).fetch()
+    assert "dict" in err.value.body
+    assert "errorCode" in err.value.body
+    assert '"v"' not in err.value.body
+
+
+async def test_body_control_characters_are_escaped(default_extract: ExtractConfig) -> None:
+    home = FakeHome()
+    home.download_error = RuntimeError("line1\nFORGED\x1b[31mred")
+    with pytest.raises(UpstreamError) as err:
+        await make(home, default_extract).fetch()
+    assert err.value.body.isprintable()
+    assert "FORGED" in err.value.body
+
+
+async def test_credentials_are_stripped_so_a_trailing_newline_is_still_redacted(
+    default_extract: ExtractConfig,
+) -> None:
+    home = FakeHome()
+    home.download_error = RuntimeError("echo tok and ap1")
+    source = CloudSource("ap1\n", "tok\n", 1.0, default_extract, home_factory=lambda: home)
+    with pytest.raises(UpstreamError) as err:
+        await source.fetch()
+    assert "tok" not in err.value.body
+    assert "ap1" not in err.value.body
+    assert home.init_calls == [("ap1", "tok")]
+
+
+async def test_first_home_is_created_off_the_event_loop(default_extract: ExtractConfig) -> None:
+    import threading
+
+    seen: list[int] = []
+
+    def factory() -> FakeHome:
+        seen.append(threading.get_ident())
+        return FakeHome({"devices": {}, "groups": {}})
+
+    source = CloudSource(ACCESS_POINT, TOKEN, 1.0, default_extract, home_factory=factory)
+    await source.fetch()
+    assert seen and seen[0] != threading.get_ident()
 
 
 async def test_secret_in_init_error_is_scrubbed(default_extract: ExtractConfig) -> None:
@@ -232,7 +317,7 @@ async def test_collision_warns_once_without_secrets(
     await source.fetch("suffix")
     await source.fetch("suffix")
     text = "\n".join(r.getMessage() for r in caplog.records)
-    assert text.count("collision") == 1
+    assert text.count("name collision") == 1
     for secret in (TOKEN, ACCESS_POINT, "SGTIN"):
         assert secret not in text
 
