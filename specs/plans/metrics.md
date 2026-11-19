@@ -36,14 +36,14 @@ gate output plus a golden exposition file reviewed by the owner.
 ## Closing review task (mandatory, last task of this plan; specs/plan.md section A)
 The PR is not opened until every step is done or marked n/a with a reason. Paste each verdict into the PR description. After any HIGH/CRITICAL fix the same reviewer re-checks.
 - [x] R1 Gate (pip-audit and check_licenses clean; output in the PR description): `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
-- [ ] R2 `python-reviewer`
-- [ ] R3 `code-reviewer`
-- [ ] R4 `security-reviewer`
-- [ ] R5 `architect`: conditional: only if a contract change was requested or shared types touched
-- [ ] R6 `code-simplifier` (after R2-R5 are clean; gate re-run)
-- [ ] R7 `performance-optimizer`: conditional: registry update and exposition on a large snapshot
-- [ ] R8 n/a: tests only (no app yet)
-- [ ] R9 `doc-updater`: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
+- [x] R2 `python-reviewer`: WARN (lone surrogate scrape failure, unbounded config work, key echo, `version: true`), all fixed; re-checked: APPROVE
+- [x] R3 `code-reviewer`: APPROVE; 12 decisions agreed; dangling-mount-symlink fallback fixed; spec text in the coordinator's docs PR
+- [x] R4 `security-reviewer`: WARN (surrogate blackout, label sanitising, config echo, mount edge cases), all fixed; re-checked: APPROVE; token heuristic is best-effort only (documented)
+- [x] R5 `architect`: not a merge blocker; the one contract request (`Tuning.state_retention_days` upper bound) goes in its own small PR; spec/SBOM text in the docs PR
+- [x] R6 `code-simplifier`: one shared helper (`echo_text`), behavior unchanged, gate re-run (551 tests)
+- [x] R7 `performance-optimizer`: PASS; update 0.27 ms and exposition about 1 ms at 20 devices, linear to 2000, flat memory; `app` may call them directly on the event loop
+- [x] R8 n/a: tests only (no app yet)
+- [x] R9 `doc-updater` (Haiku): module notes and plan synced; spec/SBOM/root CLAUDE.md/Dockerfile items listed below and in the docs PR: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
 - [ ] R10 owner PR review and squash merge
 
 ## Deviations from this plan
