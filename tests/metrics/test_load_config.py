@@ -152,7 +152,7 @@ def test_deep_nesting_is_a_config_error_not_a_crash(write_config: Any) -> None:
 
 def test_non_string_keys_are_rejected(raw_config: dict[str, Any], write_config: Any) -> None:
     raw_config[1] = "x"
-    with pytest.raises(ConfigError, match="unknown key"):
+    with pytest.raises(ConfigError, match=r"\[1\]"):
         load_config(write_config(raw_config))
 
 
