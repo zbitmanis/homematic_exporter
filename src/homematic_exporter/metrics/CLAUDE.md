@@ -19,7 +19,7 @@ Rules:
 Files: `schema.py` (`MetricDef`, `Transform`, `validate_metrics`, `ConfigError`), `config.py` (`AppConfig`, `parse_config`, `load_config`), `series.py` (pure value/label computation), `registry.py` (`Registry`, `render`). Golden exposition: `tests/metrics/golden/default_config.prom` (regenerate with `PYTHONPATH=src:. python -m tests.metrics.test_default_config`, then review the diff).
 
 Behaviour beyond the spec text (decisions):
-- `parse_config(raw)` validates a parsed mapping; `load_config` adds resolution, file limits and YAML hygiene. Errors are `ConfigError` with `.issues` (`path`, `message`); every line is `redact.scrub`bed and echoed values are cut to 40 characters, so a secret-looking label or key never appears in an error. Only the first 20 issues are printed.
+- `parse_config(raw)` validates a parsed mapping; `load_config` adds resolution, file limits and YAML hygiene. Errors are `ConfigError` with `.issues` (`path`, `message`); every line goes through `redact.scrub` and echoed values are cut to 40 characters, so a secret-looking label or key never appears in an error. Only the first 20 issues are printed.
 - `metrics` is a required key (empty list allowed); `tuning` may be omitted (defaults); `extract` is required.
 - Resolution (R21): explicit path (must exist), else `/etc/homematic-exporter/config/config.yaml`, else `/app/default-config.yaml`, else the repo copy `config/default-config.yaml` (checkouts). A broken mounted file fails; it never falls back to the default. The chosen file is logged at INFO.
 - `scale` applies to transform `none` only; any other transform with `scale != 1` is a config error (it would be silently ignored).
@@ -32,7 +32,7 @@ Behaviour beyond the spec text (decisions):
 - Counters are exposed without a `_created` series (custom collector); entity metrics with no series produce no `# HELP`/`# TYPE` lines.
 
 ## Accepted limits
-- YAML: file at most 1 MiB, valid UTF-8, one document, no aliases/anchors use (aliases rejected), no duplicate keys, no merge keys (`<<`), no non-string keys; nesting deeper than the interpreter's recursion limit is a `ConfigError`.
+- YAML: file at most 1 MiB, valid UTF-8, one document, no aliases (rejected), no duplicate keys, no merge keys (`<<`), no non-string keys; nesting deeper than the interpreter's recursion limit is a `ConfigError`.
 - At most 500 metric definitions, 64 `in` members, names 200 characters, help 500 characters. `state_retention_days` is capped at 36500 here because `config_models.Tuning` has no upper bound (see the plan's Requests).
 - Value attributes of a scope are derived from the contract dataclasses, so a new field there becomes valid in config without a change here; `extras.<key>` is checked against `extract.extras` only when loading a whole config (`Registry.build` alone checks the shape).
 - Only `gauge` entity metrics exist in v1. Series count is not capped; it is bounded by the snapshot, and metric definitions are operator-owned.
