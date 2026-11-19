@@ -21,6 +21,18 @@ from homematic_exporter.source.parser import parse_snapshot, parse_with_report
 from .conftest import device, make_state
 
 NOW = 1_795_000_000.0
+OK = (False, False, False)  # low battery, unreachable, undervoltage
+LOW = (True, False, False)
+GONE = (False, True, False)
+NOBAT = (None, False, False)
+FLOOR = "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL"
+
+
+def dev(
+    name: str, room: str, dtype: str, flags: tuple[bool | None, ...], rssi: int | None
+) -> Device:
+    low, unreach, under = flags
+    return Device(name, room, dtype, low, unreach, under, rssi, {})
 
 
 def test_golden_snapshot_for_mini_state(
@@ -36,27 +48,27 @@ def test_golden_snapshot_for_mini_state(
             Room("hall", None, None, None, "AUTOMATIC", "CLOSED", {}),
         ),
         devices=(
-            Device("kitchen wall-thermostat", "kitchen", "wall-thermostat", False, False, False, -60, {}),
-            Device("bedroom temp-humidity-display", "bedroom", "temp-humidity-display", True, False, False, -70, {}),
-            Device("bedroom radiator-thermostat", "bedroom", "radiator-thermostat", False, False, False, -55, {}),
-            Device("hall temp-humidity-sensor", "hall", "temp-humidity-sensor", False, True, False, None, {}),
-            Device("hall door-window-contact", "hall", "door-window-contact", False, False, False, -62, {}),
-            Device("system floor-controller", "system", "floor-controller", False, False, False, -70, {}),
-            Device("system circulation-pump-switch", "system", "circulation-pump-switch", None, False, False, -48, {}),
-            Device("hall hmip-new-1", "hall", "hmip-new-1", False, False, False, -66, {}),
-            Device("system access-point", "system", "access-point", None, False, False, None, {}),
-            Device("bedroom door-window-contact", "bedroom", "door-window-contact", False, False, False, -58, {}),
+            dev("kitchen wall-thermostat", "kitchen", "wall-thermostat", OK, -60),
+            dev("bedroom temp-humidity-display", "bedroom", "temp-humidity-display", LOW, -70),
+            dev("bedroom radiator-thermostat", "bedroom", "radiator-thermostat", OK, -55),
+            dev("hall temp-humidity-sensor", "hall", "temp-humidity-sensor", GONE, None),
+            dev("hall door-window-contact", "hall", "door-window-contact", OK, -62),
+            dev("system floor-controller", "system", "floor-controller", OK, -70),
+            dev("system circulation-pump-switch", "system", "circulation-pump-switch", NOBAT, -48),
+            dev("hall hmip-new-1", "hall", "hmip-new-1", OK, -66),
+            dev("system access-point", "system", "access-point", NOBAT, None),
+            dev("bedroom door-window-contact", "bedroom", "door-window-contact", OK, -58),
         ),
-        valves=(
+        valves=(  # device order, then channel order
+            Valve("bedroom", "radiator-thermostat", "bedroom radiator-thermostat", 0.3, 20.1, {}),
             Valve("kitchen", "floor-valve", "kitchen floor-valve", 0.1, None, {}),
             Valve("hall", "floor-valve", "hall floor-valve", 0.0, None, {}),
-            Valve("bedroom", "radiator-thermostat", "bedroom radiator-thermostat", 0.3, 20.1, {}),
         ),
         contacts=(
             Contact("hall", "door-window-contact", "hall door-window-contact", "CLOSED", {}),
             Contact("bedroom", "door-window-contact", "bedroom door-window-contact", "OPEN", {}),
         ),
-    )  # fmt: skip
+    )
 
 
 def test_device_names_are_unique_and_valves_skip_unused_channel(
@@ -221,15 +233,13 @@ def test_collision_renames_dependent_valves_and_contacts(
 
 
 def test_two_floor_channels_in_one_room_collide(default_extract: ExtractConfig) -> None:
-    state = make_state(
-        F=device("HmIP-FALMOT-C12", lowBat=False)
-    )
+    state = make_state(F=device("HmIP-FALMOT-C12", lowBat=False))
     state["devices"]["F"]["functionalChannels"].update(
         {
-            "1": {"functionalChannelType": "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL", "groups": ["G1"], "valvePosition": 0.2},
-            "2": {"functionalChannelType": "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL", "groups": ["G1"], "valvePosition": 0.4},
+            "1": {"functionalChannelType": FLOOR, "groups": ["G1"], "valvePosition": 0.2},
+            "2": {"functionalChannelType": FLOOR, "groups": ["G1"], "valvePosition": 0.4},
         }
-    )  # fmt: skip
+    )
     cfg = default_extract
     with pytest.raises(NameCollisionError) as err:
         parse_snapshot(state, NOW, cfg, "error")
@@ -286,7 +296,10 @@ def test_non_numeric_or_non_finite_numbers_become_none(
     state["devices"]["ID-0003"]["functionalChannels"]["1"]["valvePosition"] = value
     snap = parse_snapshot(state, NOW, default_extract)
     assert snap.rooms[0].temperature_celsius is None
-    assert next(v for v in snap.valves if v.device_type == "radiator-thermostat").position_ratio is None
+    assert (
+        next(v for v in snap.valves if v.device_type == "radiator-thermostat").position_ratio
+        is None
+    )
 
 
 def test_wrong_typed_strings_flags_and_rssi_become_none(
@@ -307,7 +320,9 @@ def test_wrong_typed_strings_flags_and_rssi_become_none(
 def test_rssi_float_with_integer_value_is_accepted_other_floats_not(
     default_extract: ExtractConfig,
 ) -> None:
-    state = make_state(A=device(rssiDeviceValue=-60.0), B=device("HmIP-STHD", rssiDeviceValue=-60.5))
+    state = make_state(
+        A=device(rssiDeviceValue=-60.0), B=device("HmIP-STHD", rssiDeviceValue=-60.5)
+    )
     snap = parse_snapshot(state, NOW, default_extract)
     assert [d.rssi_dbm for d in snap.devices] == [-60, None]
 
@@ -341,6 +356,7 @@ def test_missing_or_hostile_device_structure_never_raises(default_extract: Extra
 
 def test_hostile_groups_are_ignored(default_extract: ExtractConfig) -> None:
     state = make_state(A=device())
+    junk_channels = [None, "x", {"deviceId": 3}, {}, {"deviceId": "A"}]
     state["groups"].update(
         {
             "X1": "str",
@@ -349,10 +365,10 @@ def test_hostile_groups_are_ignored(default_extract: ExtractConfig) -> None:
             "X4": {"type": "HEATING", "label": ""},  # empty label
             "X5": {"type": "HEATING", "label": 7},
             "X6": {"type": "HEATING", "label": "ok", "channels": "nope"},
-            "X7": {"type": "HEATING", "label": "ok2", "channels": [None, "x", {"deviceId": 3}, {}, {"deviceId": "A"}]},
+            "X7": {"type": "HEATING", "label": "ok2", "channels": junk_channels},
             "X8": {"type": ["HEATING"], "label": "bad-type"},
         }
-    )  # fmt: skip
+    )
     snap = parse_snapshot(state, NOW, default_extract)
     assert [r.name for r in snap.rooms] == ["lab", "ok", "ok2"]
     assert snap.devices[0].room == "system"  # in lab and ok2
@@ -364,8 +380,12 @@ def test_channel_groups_with_unknown_or_non_heating_groups_skip_the_valve(
     state = make_state(F=device("HmIP-FALMOT-C12"))
     state["groups"]["B"] = {"id": "B", "type": "BOILER", "label": "boiler", "channels": []}
     chans = state["devices"]["F"]["functionalChannels"]
-    ctype = "FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL"
-    chans["1"] = {"functionalChannelType": ctype, "groups": ["B", "missing", 3, None], "valvePosition": 1}
+    ctype = FLOOR
+    chans["1"] = {
+        "functionalChannelType": ctype,
+        "groups": ["B", "missing", 3, None],
+        "valvePosition": 1,
+    }
     chans["2"] = {"functionalChannelType": ctype, "groups": "G1", "valvePosition": 1}
     chans["3"] = {"functionalChannelType": ctype, "groups": ["B", "G1"], "valvePosition": 0.5}
     snap = parse_snapshot(state, NOW, default_extract)
