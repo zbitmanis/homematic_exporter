@@ -45,14 +45,14 @@ gate output; parser golden `Snapshot` for the fixture.
 ## Closing review task (mandatory, last task of this plan; specs/plan.md section A)
 The PR is not opened until every step is done or marked n/a with a reason. Paste each verdict into the PR description. After any HIGH/CRITICAL fix the same reviewer re-checks.
 - [x] R1 Gate: `ruff check .`, `ruff format --check .`, `mypy src tests`, `pytest -q`, `pip-audit`, `check_licenses.py` (output pasted)
-- [ ] R2 `python-reviewer`
-- [ ] R3 `code-reviewer`
-- [ ] R4 `security-reviewer`
-- [ ] R5 `architect`: conditional: only if a contract change was requested or shared types touched
-- [ ] R6 `code-simplifier` (after R2-R5 are clean; gate re-run)
-- [ ] R7 `performance-optimizer`: conditional: parser cost on the full capture size (about 130 KB)
-- [ ] R8 n/a: tests only (no app yet)
-- [ ] R9 `doc-updater`: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
+- [x] R2 `python-reviewer`: WARN (hostile channel key ValueError, `__context__` chain, thin error bodies), all fixed; re-checked: APPROVE
+- [x] R3 `code-reviewer`: APPROVE; 11 decisions agreed; spec clarifications go to the docs PR
+- [x] R4 `security-reviewer`: WARN (`__context__` held the unscrubbed library exception, unbounded/unsanitised collision names), all fixed; re-checked: APPROVE
+- [x] R5 `architect`: n/a for the module; the one contract request (`NameCollisionError` wording "device" for all kinds) goes to the coordinator's contract/spec PR, no shared type was touched here
+- [x] R6 `code-simplifier`: no change needed (helpers do different jobs; gate re-run, 508 tests)
+- [x] R7 `performance-optimizer`: covered by the reviewers' measurements instead of a separate pass: 3000 devices or 30,000 unmapped models parse in under 0.2 s, linear; the real capture (about 130 KB) is far smaller; no hot path
+- [x] R8 n/a: tests only (no app yet); `CloudSource` has not run live (first live run phase)
+- [x] R9 `doc-updater` (Haiku): module docs corrected; spec/SBOM/root CLAUDE.md items go to the docs PR: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
 - [ ] R10 owner PR review and squash merge
 
 ## Requests (to the coordinator)
