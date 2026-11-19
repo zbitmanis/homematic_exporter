@@ -17,6 +17,8 @@
 - Added `parse_with_report` (returns a `ParseReport`) next to `parse_snapshot`, and `builder.py`, so the pure parser logs nothing and the sources log once. Constructors gained keyword-only test seams (`clock`, `home_factory`); the spec signatures still work.
 - Decisions on open points are listed in `src/homematic_exporter/source/CLAUDE.md`.
 
+- Fix round 1 (after R2-R4 reviews): errors carry no `__context__`; upstream names sanitised and bounded; thin `UpstreamError` bodies filled; log scrub before cut; stripped credentials; escaped bodies; suffix reserves base names; first library import off the loop; items listed in the CLAUDE.md decisions.
+
 ## Order of work
 1. Parser tests (rooms, device-to-room joins, naming, collision modes, valves, contacts, extras, `None` handling, unmapped model), then `parse_snapshot`.
 2. `FileSource` tests, then `FileSource`.

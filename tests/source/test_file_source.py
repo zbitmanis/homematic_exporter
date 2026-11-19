@@ -254,8 +254,8 @@ async def test_sgtin_straddling_the_log_cut_is_not_partially_logged(
     tmp_path: Path, default_extract: ExtractConfig, caplog: pytest.LogCaptureFixture
 ) -> None:
     sgtin = "0123456789ABCDEF01234567"
-    model = "M" * 60 + sgtin  # the old 64-char cut would keep only 4 hex digits of the SGTIN
+    model = "M" * 49 + "-" + sgtin  # the 64-char cut would keep only 14 hex digits of it
     state = {"groups": {}, "devices": {"a": {"modelType": model}}}
     caplog.set_level(logging.DEBUG)
     await make(write(tmp_path / "s.json", state), default_extract).fetch()
-    assert "0123" not in caplog.text
+    assert "0123456789abcd" not in caplog.text.lower()

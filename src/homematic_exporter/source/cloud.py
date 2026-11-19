@@ -25,6 +25,11 @@ _STATUS_IN_MESSAGE = re.compile(r"\bError: ([1-5]\d\d)\b")
 _STATUS_BY_CLASS = {"HmipAuthenticationError": 403, "HmipThrottlingError": 429}
 
 
+def _escape(text: str) -> str:
+    """Escape control characters (newline, ESC, ...) so a body cannot forge log lines."""
+    return "".join(c if c.isprintable() else c.encode("unicode_escape").decode() for c in text)
+
+
 class _Home(Protocol):
     """The slice of `homematicip.async_home.AsyncHome` this module uses."""
 
@@ -65,7 +70,8 @@ class CloudSource:
         home_factory: Callable[[], _Home] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
-        if not access_point.strip() or not token.strip():
+        access_point, token = access_point.strip(), token.strip()  # e.g. a secret file's newline
+        if not access_point or not token:
             raise ValueError("access point and token must not be empty")
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be a positive, finite number of seconds")
@@ -89,9 +95,11 @@ class CloudSource:
     def _upstream_error(self, exc: BaseException) -> UpstreamError:
         """A typed error whose message and body are free of the credentials and SGTINs."""
         if isinstance(exc, TimeoutError):
-            return UpstreamError("cloud request timed out")
+            return UpstreamError(
+                "cloud request timed out", body=f"no answer within {self._timeout:g} seconds"
+            )
         text = f"{type(exc).__name__}: {_message_of(exc)}"
-        body = scrub(text, (self._token, self._access_point))[:MAX_BODY_CHARS]
+        body = _escape(scrub(text, (self._token, self._access_point)))[:MAX_BODY_CHARS]
         status = _status_of(exc)
         suffix = f" (HTTP {status})" if status is not None else ""
         return UpstreamError(f"cloud request failed{suffix}", status=status, body=body)
@@ -99,7 +107,8 @@ class CloudSource:
     async def _download(self) -> object:
         home = self._home
         if home is None:
-            home = self._home_factory()
+            # The first call imports the (slow) library: keep that off the event loop.
+            home = await asyncio.to_thread(self._home_factory)
             async with asyncio.timeout(self._timeout):
                 await home.init_async(self._access_point, self._token)
             self._home = home
@@ -108,9 +117,12 @@ class CloudSource:
         return result
 
     async def fetch(self, on_collision: CollisionPolicy = "error") -> Snapshot:
+        failure: UpstreamError | None = None
         try:
             raw = await self._download()
         except Exception as exc:  # CancelledError is a BaseException and propagates
             self._home = None  # re-run the URL lookup next time
-            raise self._upstream_error(exc) from None
+            failure = self._upstream_error(exc)
+        if failure is not None:
+            raise failure  # outside the except block: no __context__ keeps the library error
         return self._builder.build(raw, self._clock(), on_collision)

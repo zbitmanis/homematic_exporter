@@ -20,25 +20,37 @@ def _reject_constant(name: str) -> object:
     raise ValueError("non-finite number")
 
 
-def _read_file(path: Path) -> bytes:
-    """Blocking read of a regular file (no symlink, no special file) of at most MAX_FILE_BYTES."""
+class _Rejected(Exception):
+    """Internal: the file is unusable for a reason that is safe to report."""
+
+
+def _slurp(path: Path) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    try:
-        fd = os.open(path, flags)
-    except (OSError, ValueError) as exc:  # ValueError: embedded NUL in the path
-        raise UpstreamError(f"cannot open configuration file: {type(exc).__name__}") from None
+    fd = os.open(path, flags)  # OSError, or ValueError for an embedded NUL
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise UpstreamError("configuration file is not a regular file")
+            raise _Rejected("configuration file is not a regular file")
         with os.fdopen(fd, "rb", closefd=False) as handle:
             data = handle.read(MAX_FILE_BYTES + 1)
-    except OSError as exc:
-        raise UpstreamError(f"cannot read configuration file: {type(exc).__name__}") from None
     finally:
         os.close(fd)
     if len(data) > MAX_FILE_BYTES:
-        raise UpstreamError("configuration file too large")
+        raise _Rejected("configuration file too large")
     return data
+
+
+def _read_file(path: Path) -> bytes:
+    """Blocking read of a regular file (no symlink, no special file) of at most MAX_FILE_BYTES.
+
+    The `UpstreamError` is raised after the `except` block, so it carries no `__context__`.
+    """
+    try:
+        return _slurp(path)
+    except _Rejected as rejected:
+        reason = str(rejected)
+    except (OSError, ValueError) as exc:  # ValueError: embedded NUL in the path
+        reason = f"cannot read configuration file: {type(exc).__name__}"
+    raise UpstreamError(reason)
 
 
 def _load(path: Path) -> object:
@@ -46,7 +58,8 @@ def _load(path: Path) -> object:
     try:
         return json.loads(data, parse_constant=_reject_constant)
     except (ValueError, RecursionError):  # includes JSONDecodeError, UnicodeDecodeError
-        raise UpstreamError("configuration file is not valid JSON") from None
+        pass
+    raise UpstreamError("configuration file is not valid JSON")
 
 
 class FileSource:

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Literal
 
-from homematic_exporter.config_models import ExtractConfig
+from homematic_exporter.config_models import ExtractConfig, ValveRule
 from homematic_exporter.contracts import (
     CollisionPolicy,
     Contact,
@@ -26,6 +26,7 @@ from homematic_exporter.contracts import (
     UpstreamError,
     Valve,
 )
+from homematic_exporter.redact import scrub
 
 # Channel types that carry the battery and radio fields of a device (spec 4).
 _BASE_PREFIX = "DEVICE_BASE"
@@ -34,6 +35,11 @@ MAX_NAME_CHARS = 128  # room names and unmapped device types are cut to this
 _UNKNOWN_TYPE = "unknown"
 _RSSI_LIMIT = 1000  # |dBm| beyond this is garbage, not a measurement
 _NO_SGTIN = ""
+MAX_REPORTED_COLLISIONS = 20  # names put into a NameCollisionError message
+_MAX_REPORTED_MODELS = 256
+_MAX_KEY_DIGITS = 9  # a channel key longer than this is not a channel number
+_MAX_BODY_KEYS = 20
+_MAX_BODY_KEY_CHARS = 40
 _LAST = 1 << 30  # sort key for channel keys that are not integers
 _KEY_WIDTH = 12
 
@@ -67,6 +73,12 @@ class _DeviceInfo:
 
 
 # --- value coercion --------------------------------------------------------------------------
+
+
+def _clean(text: str) -> str:
+    """Printable (control characters become spaces), stripped and at most MAX_NAME_CHARS long."""
+    printable = "".join(c if c.isprintable() else " " for c in text[: 4 * MAX_NAME_CHARS])
+    return printable.strip()[:MAX_NAME_CHARS].strip()
 
 
 def _num(value: object) -> float | None:
@@ -106,9 +118,9 @@ def _extras(config: ExtractConfig, scope: _Scope, source: _Raw) -> Extras:
     )
 
 
-def _read(
-    source: _Raw, mapping: Mapping[str, str], attr: str, coerce: Callable[[object], Any]
-) -> Any:
+def _read[T](
+    source: _Raw, mapping: Mapping[str, str], attr: str, coerce: Callable[[object], T]
+) -> T | None:
     field = mapping.get(attr)
     return None if field is None else coerce(source.get(field))
 
@@ -120,22 +132,24 @@ def _assign_names(bases: list[str], keys: list[tuple[str, ...]]) -> tuple[list[s
     """Unique names for `bases`; the first of a colliding group (by key) keeps the base name.
 
     Returns the names (same order as `bases`) and the set of colliding base names. Suffixes are
-    `-2`, `-3`, ... and skip any name another entity already owns.
+    `-2`, `-3`, ... and skip every name that exists as a base name (an entity really called
+    `a-2` keeps it, the suffixed `a` becomes `a-3`).
     """
     counts: dict[str, int] = {}
     for base in bases:
         counts[base] = counts.get(base, 0) + 1
     collided = {base for base, n in counts.items() if n > 1}
-    used = {base for base in counts if base not in collided}
+    used = set(counts)  # every base name is owned by its first entity, so no suffix may take it
     seen: dict[str, int] = {}
     names = [""] * len(bases)
     for index in sorted(range(len(bases)), key=lambda i: keys[i]):
         base = bases[index]
-        if base not in collided:
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        if n == 1:
             names[index] = base
             continue
-        n = seen.get(base, 0) + 1
-        candidate = base if n == 1 else f"{base}-{n}"
+        candidate = f"{base}-{n}"
         while candidate in used:
             n += 1
             candidate = f"{base}-{n}"
@@ -148,13 +162,21 @@ def _assign_names(bases: list[str], keys: list[tuple[str, ...]]) -> tuple[list[s
 # --- structure -------------------------------------------------------------------------------
 
 
+def _describe(raw: object) -> str:
+    """Type name and top-level key names (never values) of a payload, for an error body."""
+    text = f"payload type {type(raw).__name__}"
+    if isinstance(raw, dict):
+        keys = [_clean(str(k))[:_MAX_BODY_KEY_CHARS] for k in list(raw)[:_MAX_BODY_KEYS]]
+        text += f"; keys {keys}" + (" ..." if len(raw) > _MAX_BODY_KEYS else "")
+    return scrub(text)
+
+
 def _sections(raw: object) -> tuple[_Raw, _Raw]:
-    if not isinstance(raw, dict):
-        raise UpstreamError("configuration is not a JSON object")
-    devices, groups = raw.get("devices"), raw.get("groups")
-    if not isinstance(devices, dict) or not isinstance(groups, dict):
-        raise UpstreamError("configuration has no devices or groups object")
-    return devices, groups
+    if isinstance(raw, dict):
+        devices, groups = raw.get("devices"), raw.get("groups")
+        if isinstance(devices, dict) and isinstance(groups, dict):
+            return devices, groups
+    raise UpstreamError("configuration is not a devices/groups object", body=_describe(raw))
 
 
 def _rooms(groups: _Raw, config: ExtractConfig) -> tuple[list[_RoomInfo], set[str]]:
@@ -163,8 +185,9 @@ def _rooms(groups: _Raw, config: ExtractConfig) -> tuple[list[_RoomInfo], set[st
         if not isinstance(group, dict) or group.get("type") != config.room_group_type:
             continue
         label = group.get("label")
-        if isinstance(label, str) and label.strip():
-            found.append((str(group_id), label.strip(), group))
+        name = _clean(label) if isinstance(label, str) else ""
+        if name:
+            found.append((str(group_id), name, group))
     names, collided = _assign_names([f[1] for f in found], [(f[0],) for f in found])
     return [_RoomInfo(f[0], n, f[2]) for f, n in zip(found, names, strict=True)], collided
 
@@ -181,12 +204,17 @@ def _device_rooms(groups: _Raw, rooms: list[_RoomInfo]) -> dict[str, set[str]]:
     return joined
 
 
+def _channel_number(key: str) -> int:
+    ok = key.isascii() and key.isdecimal() and len(key) <= _MAX_KEY_DIGITS
+    return int(key) if ok else _LAST
+
+
 def _channels(device: _Raw) -> tuple[tuple[str, _Raw], ...]:
     channels = device.get("functionalChannels")
     if not isinstance(channels, dict):
         return ()
     items = [(str(k), v) for k, v in channels.items() if isinstance(v, dict)]
-    return tuple(sorted(items, key=lambda kv: (int(kv[0]) if kv[0].isdecimal() else _LAST, kv[0])))
+    return tuple(sorted(items, key=lambda kv: (_channel_number(kv[0]), kv[0])))
 
 
 def _base_channel(info: _DeviceInfo) -> _Raw:
@@ -197,16 +225,17 @@ def _base_channel(info: _DeviceInfo) -> _Raw:
     return {}
 
 
-def _device_type(device: _Raw, config: ExtractConfig, unmapped: list[str]) -> str:
+def _device_type(device: _Raw, config: ExtractConfig, unmapped: dict[str, None]) -> str:
     model = device.get("modelType")
     if not isinstance(model, str) or not model.strip():
         return _UNKNOWN_TYPE
     mapped = config.device_models.get(model)
     if mapped is not None:
         return mapped
-    if model not in unmapped:
-        unmapped.append(model)
-    return model.strip().lower()
+    cleaned = _clean(model) or _UNKNOWN_TYPE
+    if len(unmapped) < _MAX_REPORTED_MODELS:
+        unmapped.setdefault(cleaned, None)
+    return cleaned.lower()
 
 
 def _devices(
@@ -214,9 +243,9 @@ def _devices(
     config: ExtractConfig,
     rooms: list[_RoomInfo],
     joined: dict[str, set[str]],
-) -> tuple[list[_DeviceInfo], set[str], list[str]]:
+) -> tuple[list[_DeviceInfo], set[str], tuple[str, ...]]:
     room_name = {r.group_id: r.name for r in rooms}
-    unmapped: list[str] = []
+    unmapped: dict[str, None] = {}
     drafts: list[tuple[str, str, str, str, _Raw]] = []
     for device_id, device in devices.items():
         if not isinstance(device, dict):
@@ -240,7 +269,7 @@ def _devices(
         _DeviceInfo(did, sgtin, name, room, dtype, _channels(raw))
         for (did, sgtin, room, dtype, raw), name in zip(drafts, names, strict=True)
     ]
-    return infos, collided, unmapped
+    return infos, collided, tuple(unmapped)
 
 
 def _build_device(info: _DeviceInfo, config: ExtractConfig) -> Device:
@@ -296,25 +325,32 @@ def _sort_key(info: _DeviceInfo, channel_key: str) -> tuple[str, ...]:
     return (info.sgtin, info.device_id, channel_key.zfill(_KEY_WIDTH))
 
 
+def _valve_room_and_base(
+    info: _DeviceInfo, channel: _Raw, rule: ValveRule, room_by_group: Mapping[str, str]
+) -> tuple[str, str] | None:
+    """The valve's room and base name, or `None` if the channel names no single room."""
+    if rule.room_from == "device_room":
+        return info.room, info.name
+    room = _channel_room(channel, room_by_group)
+    return None if room is None else (room, f"{room} {rule.device_type}")
+
+
 def _valve_drafts(
     infos: list[_DeviceInfo], rooms: list[_RoomInfo], config: ExtractConfig
 ) -> list[_Draft]:
     room_by_group = {r.group_id: r.name for r in rooms}
     drafts: list[_Draft] = []
     for info in infos:
-        for key, channel in info.channels:
+        for number, channel in info.channels:
             for rule in config.valves:
                 if channel.get("functionalChannelType") != rule.channel_type:
                     continue
-                if rule.room_from == "device_room":
-                    room: str | None = info.room
-                    base = info.name
-                else:
-                    room = _channel_room(channel, room_by_group)
-                    base = f"{room} {rule.device_type}"
-                if room is not None:
-                    key_ = _sort_key(info, key)
-                    drafts.append(_Draft(room, rule.device_type, base, key_, channel, rule.fields))
+                placed = _valve_room_and_base(info, channel, rule, room_by_group)
+                if placed is None:
+                    continue
+                room, base = placed
+                sort_key = _sort_key(info, number)
+                drafts.append(_Draft(room, rule.device_type, base, sort_key, channel, rule.fields))
     return drafts
 
 
@@ -375,7 +411,7 @@ def parse_with_report(
     contacts, contact_collided = _build_contacts(_contact_drafts(infos, extract), extract)
     collided |= device_collided | valve_collided | contact_collided
     if collided and on_collision == "error":
-        raise NameCollisionError(sorted(collided))
+        raise NameCollisionError(sorted(collided)[:MAX_REPORTED_COLLISIONS])
     snapshot = Snapshot(
         taken_at=now,
         rooms=tuple(_build_room(r, extract) for r in rooms),
