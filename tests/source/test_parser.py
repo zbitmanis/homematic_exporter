@@ -597,7 +597,19 @@ def test_joiner_characters_and_legitimate_names_survive(default_extract: Extract
 
 @pytest.mark.parametrize(
     "label",
-    ["bad\ud800x", "a\u2028b", "a\u2029b", "a\x85b", "a\x00b", "a\u202eb", "a\u2066b", "a\u2069b"],
+    [
+        "bad\ud800x",
+        "a\u2028b",
+        "a\u2029b",
+        "a\x85b",
+        "a\x00b",
+        "a\u202eb",
+        "a\u2066b",
+        "a\u2069b",
+        "a\u200eb",
+        "a\u200fb",
+        "a\u061cb",
+    ],
 )
 def test_surrogates_line_separators_and_bidi_controls_are_replaced(
     label: str, default_extract: ExtractConfig
@@ -607,7 +619,19 @@ def test_surrogates_line_separators_and_bidi_controls_are_replaced(
     name = parse_snapshot(state, NOW, default_extract).rooms[0].name
     assert len(name) == len(label)
     assert " " in name
-    assert not {ord(c) for c in name} & {0, 0x85, 0x2028, 0x2029, 0x202E, 0x2066, 0x2069, 0xD800}
+    assert not {ord(c) for c in name} & {
+        0,
+        0x85,
+        0x2028,
+        0x2029,
+        0x202E,
+        0x2066,
+        0x2069,
+        0xD800,
+        0x200E,
+        0x200F,
+        0x61C,
+    }
     name.encode("utf-8")  # a lone surrogate would raise here (and break the exposition)
 
 
@@ -617,3 +641,17 @@ def test_describing_a_huge_payload_is_bounded(default_extract: ExtractConfig) ->
     with pytest.raises(UpstreamError):
         parse_snapshot(raw, NOW, default_extract)
     assert time.perf_counter() - start < 1.0
+
+
+def test_non_numeric_channel_key_sorts_after_numeric_ones_for_suffixing(
+    default_extract: ExtractConfig,
+) -> None:
+    state = make_state(F=device("HmIP-FALMOT-C12"))
+    chans = state["devices"]["F"]["functionalChannels"]
+    chans["1x"] = {"functionalChannelType": FLOOR, "groups": ["G1"], "valvePosition": 0.1}
+    chans["999999999"] = {"functionalChannelType": FLOOR, "groups": ["G1"], "valvePosition": 0.9}
+    snap = parse_snapshot(state, NOW, default_extract, "suffix")
+    assert [(v.device, v.position_ratio) for v in snap.valves] == [
+        ("lab floor-valve-2", 0.1),
+        ("lab floor-valve", 0.9),
+    ]
