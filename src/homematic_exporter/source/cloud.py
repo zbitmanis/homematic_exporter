@@ -125,4 +125,10 @@ class CloudSource:
             failure = self._upstream_error(exc)
         if failure is not None:
             raise failure  # outside the except block: no __context__ keeps the library error
-        return self._builder.build(raw, self._clock(), on_collision)
+        rejected: UpstreamError | None = None
+        try:
+            return self._builder.build(raw, self._clock(), on_collision)
+        except UpstreamError as exc:  # e.g. not a configuration: the parser cannot know the secrets
+            body = scrub(exc.body, (self._token, self._access_point))[:MAX_BODY_CHARS]
+            rejected = UpstreamError(str(exc), status=exc.status, body=body)
+        raise rejected

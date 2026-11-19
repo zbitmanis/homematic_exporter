@@ -9,8 +9,10 @@ sources to log once.
 """
 
 import math
+import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from itertools import islice
 from types import MappingProxyType
 from typing import Any, Literal
 
@@ -75,9 +77,21 @@ class _DeviceInfo:
 # --- value coercion --------------------------------------------------------------------------
 
 
+_UNSAFE_CATEGORIES = frozenset({"Cc", "Cs", "Zl", "Zp"})  # control, lone surrogate, line/para sep
+_BIDI_CONTROLS = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
+
+
+def _is_unsafe(char: str) -> bool:
+    """Characters replaced in names: NUL/ESC/NEL, lone surrogates, U+2028/2029, bidi controls.
+
+    Joiners (ZWJ, ZWNJ) and soft hyphens are kept: emoji families and Persian words need them.
+    """
+    return unicodedata.category(char) in _UNSAFE_CATEGORIES or char in _BIDI_CONTROLS
+
+
 def _clean(text: str) -> str:
-    """Printable (control characters become spaces), stripped and at most MAX_NAME_CHARS long."""
-    printable = "".join(c if c.isprintable() else " " for c in text[: 4 * MAX_NAME_CHARS])
+    """Unsafe characters (see `_is_unsafe`) become spaces; stripped, at most MAX_NAME_CHARS long."""
+    printable = "".join(" " if _is_unsafe(c) else c for c in text[: 4 * MAX_NAME_CHARS])
     return printable.strip()[:MAX_NAME_CHARS].strip()
 
 
@@ -166,7 +180,7 @@ def _describe(raw: object) -> str:
     """Type name and top-level key names (never values) of a payload, for an error body."""
     text = f"payload type {type(raw).__name__}"
     if isinstance(raw, dict):
-        keys = [_clean(str(k))[:_MAX_BODY_KEY_CHARS] for k in list(raw)[:_MAX_BODY_KEYS]]
+        keys = [_clean(str(k))[:_MAX_BODY_KEY_CHARS] for k in islice(raw, _MAX_BODY_KEYS)]
         text += f"; keys {keys}" + (" ..." if len(raw) > _MAX_BODY_KEYS else "")
     return scrub(text)
 

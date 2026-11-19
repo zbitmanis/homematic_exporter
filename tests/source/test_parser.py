@@ -597,7 +597,7 @@ def test_joiner_characters_and_legitimate_names_survive(default_extract: Extract
 
 @pytest.mark.parametrize(
     "label",
-    ["bad\ud800", "a\u2028b", "a\u2029b", "a\x85b", "a\x00b", "a\u202eb", "a\u2066b", "a\u2069b"],
+    ["bad\ud800x", "a\u2028b", "a\u2029b", "a\x85b", "a\x00b", "a\u202eb", "a\u2066b", "a\u2069b"],
 )
 def test_surrogates_line_separators_and_bidi_controls_are_replaced(
     label: str, default_extract: ExtractConfig
@@ -606,7 +606,8 @@ def test_surrogates_line_separators_and_bidi_controls_are_replaced(
     state["groups"]["G1"]["label"] = label
     name = parse_snapshot(state, NOW, default_extract).rooms[0].name
     assert len(name) == len(label)
-    assert name[1] == " " or name.startswith("bad ")
+    assert " " in name
+    assert not {ord(c) for c in name} & {0, 0x85, 0x2028, 0x2029, 0x202E, 0x2066, 0x2069, 0xD800}
     name.encode("utf-8")  # a lone surrogate would raise here (and break the exposition)
 
 

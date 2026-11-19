@@ -52,4 +52,11 @@ The PR is not opened until every step is done or marked n/a with a reason. Paste
 - [ ] R10 owner PR review and squash merge
 
 ## Requests (to the coordinator)
-_none yet_
+Spec text to add to section 4 (source parsing rules), from the implementation:
+- A device model is matched exactly against `extract.device_models`; an unmatched one becomes the cleaned, lowercased model and is reported once.
+- Upstream names (room labels, unmapped models) are sanitised: control characters, lone surrogates, line/paragraph separators and bidi controls become spaces, the result is stripped and at most 128 characters.
+- The suffix rule skips names already taken: an entity really called `a-2` keeps it, the suffixed `a` becomes `a-3`.
+- A payload without a `devices` object and a `groups` object raises `UpstreamError` (strict top-level check); everything inside is lenient (`None`).
+- Collisions are resolved per kind (devices, valves, contacts, rooms), rooms included.
+- A floor-valve channel whose groups name zero or several rooms is skipped.
+- One `CloudSource.fetch` can take up to 2x `HTTP_TIMEOUT_SECONDS` (separate timeouts for `init_async` and the download).
