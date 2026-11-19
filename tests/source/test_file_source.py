@@ -169,6 +169,7 @@ async def test_collision_warning_once_per_new_collision(
     ]
     assert len(warnings) == 1
     assert "kitchen wall-thermostat" in warnings[0].getMessage()
+    assert "device name collision" not in warnings[0].getMessage()  # it also covers rooms
     assert "SGTIN" not in warnings[0].getMessage()
 
     write(path, mini_state)  # collision resolved ...
