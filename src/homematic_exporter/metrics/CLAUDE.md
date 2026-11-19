@@ -16,7 +16,7 @@ Rules:
 - Allowed paths for this module are enforced by `.claude/ownership.yaml` (CI check and path-guard hook); anything else goes under "Requests" in your plan.
 
 ## Implementation notes (task 2b)
-Files: `schema.py` (`MetricDef`, `Transform`, `validate_metrics`, `ConfigError`), `config.py` (`AppConfig`, `parse_config`, `load_config`), `series.py` (pure value/label computation), `text.py` (`NAME_PATTERN`, `clean_text` for label/version/help text, `escape_text` and `hide_tokens` for error text), `registry.py` (`Registry`, `render`). Golden exposition: `tests/metrics/golden/default_config.prom` (regenerate with `PYTHONPATH=src:. python -m tests.metrics.test_default_config`, then review the diff).
+Files: `schema.py` (`MetricDef`, `Transform`, `validate_metrics`, `ConfigError`), `config.py` (`AppConfig`, `parse_config`, `load_config`), `series.py` (pure value/label computation), `text.py` (`NAME_PATTERN`, `clean_text` for label/version/help text, `echo_text` = `escape_text` + `hide_tokens` for anything echoed in an error), `registry.py` (`Registry`, `render`). Golden exposition: `tests/metrics/golden/default_config.prom` (regenerate with `PYTHONPATH=src:. python -m tests.metrics.test_default_config`, then review the diff).
 
 Behaviour beyond the spec text (decisions):
 - `parse_config(raw)` validates a parsed mapping; `load_config` adds resolution, file limits and YAML hygiene. Errors are `ConfigError` with `.issues` (`path`, `message`); every line goes through `redact.scrub` and echoed values are cut to 40 characters, so a secret-looking label or key never appears in an error. Only the first 20 issues are printed.

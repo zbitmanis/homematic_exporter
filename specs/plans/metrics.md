@@ -10,7 +10,7 @@
 | `src/homematic_exporter/metrics/config.py` | `AppConfig` (composes `Tuning`, `ExtractConfig`, metric definitions), `load_config(path: Path | None = None)` with the R21 resolution (explicit path must exist; `None` = mount path then bundled default; never reads the environment), startup validation errors with key paths (R19) |
 | `src/homematic_exporter/metrics/registry.py` | `Registry.build(metric_defs, tuning, version)`/`update/record_success/record_error/exposition`, `render(config, snapshot, batteries, version)`; private `CollectorRegistry`; series removal; derived (6.5) and meta (6.6) metrics; `data_age` absent before first success |
 | `src/homematic_exporter/metrics/schema.py` | `MetricDef`, `Transform` (structural pydantic models), `validate_metrics` (semantic checks with key paths), `ConfigError` (added: keeps `config.py` and `registry.py` small and shares the checks between `load_config` and `Registry.build`) |
-| `src/homematic_exporter/metrics/text.py` | `clean_text` (label/version/help sanitising), `NAME_PATTERN`, `escape_text`/`hide_tokens` (error text; added) |
+| `src/homematic_exporter/metrics/text.py` | `clean_text` (label/version/help sanitising), `NAME_PATTERN`, `echo_text` (= `escape_text` + `hide_tokens`, for anything echoed in an error; added) |
 | `src/homematic_exporter/metrics/series.py` | pure label/value computation per metric (added) |
 | `config/default-config.yaml` | **only the `metrics:` list** (spec 6.2-6.4); `extract`/`tuning` are fixed |
 | `tests/metrics/` | hand-built `Snapshot` golden exposition (`golden/default_config.prom`), validation errors, extras-only metric, fallback order, hostile YAML, concurrency |
