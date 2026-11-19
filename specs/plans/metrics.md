@@ -56,6 +56,8 @@ The PR is not opened until every step is done or marked n/a with a reason. Paste
 - Process note: the hostile-input tests of the first pass (unhashable keys, NUL, huge integers) landed with or after their fixes, not red first. The fix-round tests (`test_hardening.py`) were committed red first.
 - Fix-round decisions: label/version sanitising in `text.py`; the 256 KiB limit is what makes a hostile file fail in well under a second (a 1 MiB file is refused before parsing).
 
+- Fix round 2 (tests red first in `test_hardening2.py`): token redaction never touches strings that fully match the metric name pattern and now also covers messages (value after `=` too); LRM/RLM/ALM are cleaned; `quote()` keeps its closing quote; ENOTDIR and dangling symlinks count as a present (broken) mount; the YAML cost comment says 2 to 9 ms per KiB (about 2.3 s at the 256 KiB cap).
+
 ## Requests (to the coordinator)
 1. `config_models.Tuning.state_retention_days` has no upper bound (`ge=1` only); `timedelta(days=10**30)` in `state` raises `OverflowError`. `metrics` rejects values above 36500 when loading, but the contract should carry the bound (`le=36500`) with a spec 5.1 note.
 2. Spec section 3 (`metrics` row) and `docs/sbom/components.md`: mention `parse_config`, `ConfigError`, the `clock` keyword and that `scale` is valid with transform `none` only (spec 6.1 validation list).

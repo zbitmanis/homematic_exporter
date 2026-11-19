@@ -33,7 +33,8 @@ IMAGE_CONFIG_PATH = Path("/app/default-config.yaml")
 # Used when running from a checkout (tests, `uvicorn` in the repo) instead of the image.
 CHECKOUT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "default-config.yaml"
 
-# Pure-Python YAML costs about 2 ms per KiB, so the limit also bounds startup time (about 0.5 s).
+# Pure-Python YAML costs 2 to 9 ms per KiB (worst case: flow sequences), so the limit bounds
+# startup time to about 2.3 s.
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_SECTION_ENTRIES = 2000  # lists and mappings directly inside `extract`
 MAX_TOP_LEVEL_KEYS = 20
@@ -176,7 +177,10 @@ def _read_text(path: Path) -> str:
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)  # non-blocking: a FIFO must not hang
     except FileNotFoundError:
-        raise ConfigError([Issue("", "config file not found")]) from None
+        broken = os.path.islink(path)
+        raise ConfigError(
+            [Issue("", "config file is a broken link" if broken else "config file not found")]
+        ) from None
     except OSError as exc:
         raise ConfigError([Issue("", f"cannot open config file ({exc.strerror})")]) from None
     except ValueError:  # e.g. an embedded NUL in the path
@@ -205,7 +209,7 @@ def _present(path: Path) -> bool:
     """
     try:
         os.lstat(path)
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError:
         return False
     except (OSError, ValueError):
         return True

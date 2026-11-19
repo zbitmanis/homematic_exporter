@@ -145,7 +145,7 @@ def test_dangling_symlink_at_the_mount_path_does_not_fall_back(
     link = tmp_path / "config.yaml"
     link.symlink_to(tmp_path / "gone.yaml")
     monkeypatch.setattr(config_module, "MOUNT_CONFIG_PATH", link)
-    with pytest.raises(ConfigError, match="not found"):
+    with pytest.raises(ConfigError, match="broken link"):
         load_config(None)
 
 

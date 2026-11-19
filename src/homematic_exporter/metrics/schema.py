@@ -14,7 +14,7 @@ from typing import Literal, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from homematic_exporter.contracts import BatteryRecord, Contact, Device, Room, Valve
-from homematic_exporter.metrics.text import escape_text, hide_tokens
+from homematic_exporter.metrics.text import NAME_PATTERN, escape_text, hide_tokens
 from homematic_exporter.redact import scrub
 
 Scope = Literal["rooms", "devices", "valves", "contacts", "batteries"]
@@ -28,7 +28,6 @@ MAX_ISSUES_SHOWN = 20
 MAX_ECHO_LENGTH = 40
 MAX_MESSAGE_LENGTH = 300
 
-NAME_PATTERN = re.compile(r"^homematic_[a-z0-9]+(?:_[a-z0-9]+)+$")
 _EXTRAS_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 EXTRAS_PREFIX = "extras."
 
@@ -87,7 +86,10 @@ class Issue(NamedTuple):
 
 def make_issue(path: str, message: str) -> Issue:
     """An issue with secret-looking text scrubbed and overlong text cut (no secret values)."""
-    return Issue(scrub(escape_text(path)), scrub(escape_text(message[:MAX_MESSAGE_LENGTH])))
+    return Issue(
+        scrub(hide_tokens(escape_text(path))),
+        scrub(hide_tokens(escape_text(message[:MAX_MESSAGE_LENGTH]))),
+    )
 
 
 def quote(value: object) -> str:
@@ -97,7 +99,8 @@ def quote(value: object) -> str:
     except ValueError:  # an integer beyond Python's digit limit
         text = "<unprintable value>"
     if len(text) > MAX_ECHO_LENGTH:
-        text = text[: MAX_ECHO_LENGTH - 3] + "..."
+        closing = text[0] if text[0] in "'\"" else ""
+        text = text[: MAX_ECHO_LENGTH - 3] + "..." + closing
     return hide_tokens(text)
 
 

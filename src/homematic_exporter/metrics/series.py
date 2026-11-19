@@ -90,7 +90,11 @@ def to_value(raw: object, transform: Transform, scale: float) -> float | None:
 def _raw_getter(value: str) -> Callable[[Entity], object]:
     if value.startswith(EXTRAS_PREFIX):
         key = value.removeprefix(EXTRAS_PREFIX)
-        return lambda entity: getattr(entity, "extras", {}).get(key)
+
+        def extra(entity: Entity) -> object:
+            return None if isinstance(entity, BatteryRecord) else entity.extras.get(key)
+
+        return extra
     return lambda entity: getattr(entity, value, None)
 
 
