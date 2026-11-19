@@ -162,7 +162,9 @@ async def test_collision_warning_once_per_new_collision(
 
     await source.fetch("suffix")
     await source.fetch("suffix")  # same collision again: silent
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "collision" in r.getMessage()]
+    warnings = [
+        r for r in caplog.records if r.levelno == logging.WARNING and "collision" in r.getMessage()
+    ]
     assert len(warnings) == 1
     assert "kitchen wall-thermostat" in warnings[0].getMessage()
     assert "SGTIN" not in warnings[0].getMessage()
@@ -171,7 +173,9 @@ async def test_collision_warning_once_per_new_collision(
     await source.fetch("suffix")
     write(path, collision_state)  # ... and back: a new collision, warn again
     await source.fetch("suffix")
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "collision" in r.getMessage()]
+    warnings = [
+        r for r in caplog.records if r.levelno == logging.WARNING and "collision" in r.getMessage()
+    ]
     assert len(warnings) == 2
 
 
