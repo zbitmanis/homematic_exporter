@@ -3,11 +3,11 @@
 Plan: `specs/plans/metrics.md`. Owns the `config.yaml` schema (pydantic v2, `extra=forbid`), config loading and validation (spec R19-R21), and **all** Prometheus metrics: entity, derived (6.5) and meta (6.6) ones. Imports nothing from other modules (only `contracts`, `config_models`, `redact`). The `check_config` command is NOT here (task 4, spec R20).
 
 Interface (spec 3):
-- `load_config(path: Path | None = None) -> AppConfig`: `AppConfig` composes `Tuning`, `ExtractConfig` and the metric definitions. An explicit `path` must exist; `None` means mount path, then the bundled default. Never reads the environment (`app` passes `CONFIG_FILE`).
-- `Registry.build(metric_defs, tuning, version="dev")`, `Registry.update(snapshot, batteries)`, `Registry.record_success(timestamp, duration)`, `Registry.record_error()`, `Registry.exposition() -> bytes`, `render(config, snapshot, batteries=(), version="dev") -> bytes`.
+- `load_config(path: Path | None = None) -> AppConfig`: `AppConfig` composes `Tuning`, `ExtractConfig` and the metric definitions. `load_config(None)` tries, in order: (1) an explicit `path` (must exist, no fallback); (2) `/etc/homematic-exporter/config/config.yaml`; (3) `/app/default-config.yaml`; (4) the repo copy `config/default-config.yaml` (checkouts only: in an installed layout `parents[3]` points elsewhere). The image does NOT yet ship `/app/default-config.yaml` (the Dockerfile is not this module's; the app/deployment task adds the COPY), so without a mount the image fails with "no config file" until then. Never reads the environment (`app` passes `CONFIG_FILE`).
+- `Registry.build(metric_defs, tuning, version="dev", *, clock=time.time)`, `Registry.update(snapshot, batteries)`, `Registry.record_success(timestamp, duration)`, `Registry.record_error()`, `Registry.exposition() -> bytes`, `render(config, snapshot, batteries=(), version="dev") -> bytes`.
 
 Rules:
-- Use a private `CollectorRegistry`, never the global one. `yaml.safe_load` only.
+- Use a private `CollectorRegistry`, never the global one. The loader is a SafeLoader subclass (`_StrictLoader`, no aliases or duplicate keys); never `yaml.load`, FullLoader or CSafeLoader.
 - Each YAML entry: `scope`, `value`, `labels`, `scale`, `transform` (spec 6.1). Reject names that break `homematic_<thing>_<unit>` or labels outside `room`, `device_type`, `device` (mapping table in 6.1).
 - `homematic_data_age_seconds` comes from a custom collector: no series until the first `record_success` (`Gauge.set_function` cannot do that). `homematic_exporter_build_info` takes its `version` label from the `version` argument (the caller, `app`, reads `APP_VERSION`; the metrics module never reads the environment).
 - Missing source values remove the series instead of exporting stale numbers; log a warning for a metric with zero series on two consecutive updates (C11).
@@ -16,7 +16,7 @@ Rules:
 - Allowed paths for this module are enforced by `.claude/ownership.yaml` (CI check and path-guard hook); anything else goes under "Requests" in your plan.
 
 ## Implementation notes (task 2b)
-Files: `schema.py` (`MetricDef`, `Transform`, `validate_metrics`, `ConfigError`), `config.py` (`AppConfig`, `parse_config`, `load_config`), `series.py` (pure value/label computation), `registry.py` (`Registry`, `render`). Golden exposition: `tests/metrics/golden/default_config.prom` (regenerate with `PYTHONPATH=src:. python -m tests.metrics.test_default_config`, then review the diff).
+Files: `schema.py` (`MetricDef`, `Transform`, `validate_metrics`, `ConfigError`), `config.py` (`AppConfig`, `parse_config`, `load_config`), `series.py` (pure value/label computation), `text.py` (`NAME_PATTERN`, `clean_text` for label/version/help text, `escape_text` and `hide_tokens` for error text), `registry.py` (`Registry`, `render`). Golden exposition: `tests/metrics/golden/default_config.prom` (regenerate with `PYTHONPATH=src:. python -m tests.metrics.test_default_config`, then review the diff).
 
 Behaviour beyond the spec text (decisions):
 - `parse_config(raw)` validates a parsed mapping; `load_config` adds resolution, file limits and YAML hygiene. Errors are `ConfigError` with `.issues` (`path`, `message`); every line goes through `redact.scrub` and echoed values are cut to 40 characters, so a secret-looking label or key never appears in an error. Only the first 20 issues are printed.
@@ -32,7 +32,7 @@ Behaviour beyond the spec text (decisions):
 - Counters are exposed without a `_created` series (custom collector); entity metrics with no series produce no `# HELP`/`# TYPE` lines.
 
 ## Accepted limits
-- YAML: file at most 256 KiB (pure-Python YAML costs 2 to 9 ms per KiB (worst case flow sequences), so this bounds startup time to about 2.3 s; the bundled default is about 6 KiB), valid UTF-8, one document, no aliases (rejected), no duplicate keys, no merge keys (`<<`), no non-string keys; nesting deeper than the interpreter's recursion limit is a `ConfigError`.
+- YAML: file at most 256 KiB (pure-Python YAML costs about 10 ms per KiB in the worst case (flow sequences), so a 256 KiB file takes about 2.3 to 2.6 s; the bundled default is about 5 KiB), valid UTF-8, one document, no aliases (rejected), no duplicate keys, no merge keys (`<<`), no non-string keys; nesting deeper than the interpreter's recursion limit is a `ConfigError`.
 - Before pydantic runs, a `metrics` list over 500 entries, an `extract` section list/mapping over 2000 entries or more than 20 top-level keys fail fast. Only the first 20 issues are scrubbed and printed; `ConfigError.total` keeps the true count.
 - At most 500 metric definitions, 64 `in` members, names 200 characters, help 500 characters. `state_retention_days` is capped at 36500 here because `config_models.Tuning` has no upper bound (see the plan's Requests).
 - Value attributes of a scope are derived from the contract dataclasses, so a new field there becomes valid in config without a change here; `extras.<key>` is checked against `extract.extras` only when loading a whole config (`Registry.build` alone checks the shape).
@@ -47,5 +47,5 @@ Behaviour beyond the spec text (decisions):
 - `load_config` is synchronous startup work (pure-Python `SafeLoader`; CSafeLoader is deliberately not used). Never call it while serving.
 - A mount path that exists as a dangling symlink ("broken link"), behind an unreadable parent, or below a regular file (ENOTDIR) counts as present and fails with `ConfigError`; it never falls back to the default (R21). A path with a NUL byte is a `ConfigError`. `version` must be the integer 1 (not `true`, not `1.0`).
 - `Registry.build` raises `ConfigError` and `record_success` raises `ValueError`: `app` must keep both inside its error handling.
-- `exposition()` is synchronous and CPU-bound (about 1 ms at 20 devices, about 94 ms at 2000 devices); series count is uncapped except by the 500-definition cap. `app` serves it with `prometheus_client.CONTENT_TYPE_LATEST`.
+- `exposition()` is synchronous and CPU-bound (order of 1 ms at 20 devices and under 100 ms at 2000; machine dependent); series count is uncapped except by the 500-definition cap. `app` serves it with `prometheus_client.CONTENT_TYPE_LATEST`.
 - Scope-to-label mapping lives once in `schema.LABEL_ATTRS` (`SCOPE_LABELS` is derived from it).

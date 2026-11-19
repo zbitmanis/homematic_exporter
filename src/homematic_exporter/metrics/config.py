@@ -33,8 +33,8 @@ IMAGE_CONFIG_PATH = Path("/app/default-config.yaml")
 # Used when running from a checkout (tests, `uvicorn` in the repo) instead of the image.
 CHECKOUT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "default-config.yaml"
 
-# Pure-Python YAML costs 2 to 9 ms per KiB (worst case: flow sequences), so the limit bounds
-# startup time to about 2.3 s.
+# Pure-Python YAML costs about 10 ms per KiB in the worst case (flow sequences): a file at this
+# limit takes about 2.3 to 2.6 s to parse.
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_SECTION_ENTRIES = 2000  # lists and mappings directly inside `extract`
 MAX_TOP_LEVEL_KEYS = 20
