@@ -64,13 +64,13 @@ Spec text to add (section 3/4/C6/C7; the interface additions above are included)
 - Collisions are resolved per kind (devices, valves, contacts, rooms), rooms included.
 - A floor-valve channel whose groups name zero or several rooms is skipped.
 - One `CloudSource.fetch` can take up to 2x `HTTP_TIMEOUT_SECONDS` (separate timeouts for `init_async` and the download).
-- Room labels: a room is a group of the configured  with a non-empty string label; the label is cleaned and cut to 128 characters; duplicate labels collide (like device names). A device in no room or in several takes the configured .
-- A model is matched exactly; a missing or empty model becomes ; at most 256 distinct unmapped models are reported per source.
--  is raised for rooms, valves and contacts too, and lists at most 20 names. The  docstring and message say "device": a coordinator contract PR. The log covers all kinds.
+- Room labels: a room is a group of the configured `room_group_type` with a non-empty string label; the label is cleaned and cut to 128 characters; duplicate labels collide (like device names). A device in no room or in several takes the configured `system_room`.
+- A model is matched exactly; a missing or empty model becomes `unknown`; at most 256 distinct unmapped models are reported per source.
+- `NameCollisionError` is raised for rooms, valves and contacts too, and lists at most 20 names. The `contracts.py` docstring and message say "device": a coordinator contract PR. The log covers all kinds.
 - Tie-break for suffixes: SGTIN (no SGTIN first), then device id, then channel number (non-numeric or long keys last).
-- The base channel is the first (by channel number) ,  or ;  accepts integral floats within +-1000.
-- A floor valve needs exactly one labelled room in its channel's staff access_bpf everyone localaccounts _appserverusr admin _appserveradm _lpadmin com.apple.sharepoint.group.1 _appstore _lpoperator _developer _analyticsusers com.apple.access_ftp com.apple.access_screensharing com.apple.access_ssh com.apple.access_remote_ae; zero or several are skipped. The "channel 12 is unused" sentence is not implemented as such (an empty staff access_bpf everyone localaccounts _appserverusr admin _appserveradm _lpadmin com.apple.sharepoint.group.1 _appstore _lpoperator _developer _analyticsusers com.apple.access_ftp com.apple.access_screensharing com.apple.access_ssh com.apple.access_remote_ae list is what skips it).
-- Extras: every configured key of the scope is present;  when missing, non-scalar or non-finite; strings pass through as-is.
--  limits: 8 MiB, regular files only,  on the final component, no paths in errors, / rejected, not for large files (memory).
-- C7 accepted limits: the library logs error bodies and URLs itself (the app must scrub), trusts  from the lookup response, no size cap on the cloud response,  is never closed,  is not safe for concurrent calls.
-- Library surfaces relied on: , , ,  (403),  (429), and the  text in  messages.
+- The base channel is the first (by channel number) `DEVICE_BASE*`, `DEVICE_OPERATIONLOCK` or `ACCESS_CONTROLLER_CHANNEL`; `rssi_dbm` accepts integral floats within +-1000.
+- A floor valve needs exactly one labelled room in its channel's `groups`; zero or several are skipped. The "channel 12 is unused" sentence is not implemented as such (an empty `groups` list is what skips it).
+- Extras: every configured key of the scope is present; `None` when missing, non-scalar or non-finite; strings pass through as-is.
+- `FileSource` limits: 8 MiB, regular files only, `O_NOFOLLOW` on the final component, no paths in errors, `NaN`/`Infinity` rejected, not for large files (memory).
+- C7 accepted limits: the library logs error bodies and URLs itself (the app must scrub), trusts `urlREST` from the lookup response, no size cap on the cloud response, `AsyncHome` is never closed, `fetch` is not safe for concurrent calls.
+- Library surfaces relied on: `AsyncHome()`, `init_async(access_point_id, auth_token)`, `download_configuration_async()`, `HmipAuthenticationError` (403), `HmipThrottlingError` (429), and the `Error: <code>` text in `HmipConnectionError` messages.
