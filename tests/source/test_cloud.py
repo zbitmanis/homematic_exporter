@@ -376,3 +376,38 @@ def test_status_mapping_with_the_real_library_exceptions() -> None:
     assert _status_of(errors.HmipThrottlingError()) == 429
     assert _status_of(errors.HmipConnectionError("Error: 500 Internal")) == 500
     assert _status_of(errors.HmipConnectionError("no status here")) is None
+
+
+async def test_secret_as_top_level_key_is_redacted_from_the_payload_error_body(
+    default_extract: ExtractConfig,
+) -> None:
+    with pytest.raises(UpstreamError) as err:
+        await make(FakeHome({TOKEN: 1}), default_extract).fetch()
+    assert TOKEN not in err.value.body + str(err.value)
+    assert "dict" in err.value.body
+    assert err.value.__context__ is None
+
+
+async def test_cancel_while_the_first_home_is_created_in_the_worker_thread(
+    mini_state: dict[str, Any], default_extract: ExtractConfig
+) -> None:
+    import threading
+
+    release = threading.Event()
+    started = threading.Event()
+    home = FakeHome(mini_state)
+
+    def factory() -> FakeHome:
+        started.set()
+        release.wait(5)
+        return home
+
+    source = CloudSource(ACCESS_POINT, TOKEN, 5.0, default_extract, home_factory=factory)
+    task = asyncio.create_task(source.fetch())
+    assert await asyncio.to_thread(started.wait, 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    release.set()
+    assert source._home is None  # noqa: SLF001
+    assert len((await source.fetch()).devices) == 10

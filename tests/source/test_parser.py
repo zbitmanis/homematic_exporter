@@ -583,3 +583,36 @@ def test_package_exports_parse_with_report() -> None:
     import homematic_exporter.source as pkg
 
     assert "parse_with_report" in pkg.__all__
+
+
+def test_joiner_characters_and_legitimate_names_survive(default_extract: ExtractConfig) -> None:
+    family = "Familie \U0001f468\u200d\U0001f469\u200d\U0001f467"
+    persian = "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"
+    state = make_state()
+    for gid, label in (("G1", family), ("G2", persian), ("G3", "soft\u00adhyphen")):
+        state["groups"][gid] = {"id": gid, "type": "HEATING", "label": label, "channels": []}
+    snap = parse_snapshot(state, NOW, default_extract)
+    assert [r.name for r in snap.rooms] == [family, persian, "soft\u00adhyphen"]
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["bad\ud800", "a\u2028b", "a\u2029b", "a\x85b", "a\x00b", "a\u202eb", "a\u2066b", "a\u2069b"],
+)
+def test_surrogates_line_separators_and_bidi_controls_are_replaced(
+    label: str, default_extract: ExtractConfig
+) -> None:
+    state = make_state()
+    state["groups"]["G1"]["label"] = label
+    name = parse_snapshot(state, NOW, default_extract).rooms[0].name
+    assert len(name) == len(label)
+    assert name[1] == " " or name.startswith("bad ")
+    name.encode("utf-8")  # a lone surrogate would raise here (and break the exposition)
+
+
+def test_describing_a_huge_payload_is_bounded(default_extract: ExtractConfig) -> None:
+    raw = {f"k{i}": 1 for i in range(1_000_000)}
+    start = time.perf_counter()
+    with pytest.raises(UpstreamError):
+        parse_snapshot(raw, NOW, default_extract)
+    assert time.perf_counter() - start < 1.0
