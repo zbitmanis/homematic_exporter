@@ -100,4 +100,4 @@ class ExtractConfig(_Strict):
 
 class Tuning(_Strict):
     heat_demand_min_position: float = Field(default=0.0, ge=0.0, le=1.0)
-    state_retention_days: int = Field(default=90, ge=1)
+    state_retention_days: int = Field(default=90, ge=1, le=36500)
