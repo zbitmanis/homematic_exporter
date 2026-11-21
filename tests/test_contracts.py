@@ -142,3 +142,9 @@ def test_name_collision_error_lists_sorted_names() -> None:
     err = NameCollisionError(["b room x", "a room x"])
     assert err.names == ("a room x", "b room x")
     assert "a room x, b room x" in str(err)
+
+
+def test_name_collision_error_message_covers_every_kind_of_name() -> None:
+    err = NameCollisionError(["Living", "Living room x"])
+    assert str(err).startswith("name collision: ")
+    assert "device" not in str(err)
