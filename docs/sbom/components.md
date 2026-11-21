@@ -9,16 +9,16 @@ Package root: `src/homematic_exporter/`. One agent owns one module per worktree.
 | Module | Path | Owns | Public interface | Depends on | Proof |
 |---|---|---|---|---|---|
 | contracts | `contracts.py`, `config_models.py`, `redact.py` | `Snapshot` and entity types, `Source`/`StateStore` protocols, `NameCollisionError`, `ExtractConfig`/`Tuning` config models, `scrub` | the types and `scrub` themselves | pydantic (config models only) | mypy, `tests/test_contracts.py`, `test_config_models.py`, `test_redact.py`, `test_import_boundaries.py`; changes need a spec change and their own PR |
-| source | `source/` | Homematic IP client (cloud first, CCU later), `parse_snapshot` | implements `Source.fetch(on_collision) -> Snapshot` (async); `parse_snapshot(raw, now, extract, on_collision)` | contracts (token via env) | `tests/source/` using the shared `tests/fixtures/mini_state.json`, no network |
+| source | `source/` | Homematic IP cloud client (`CloudSource`, CCU later), local JSON file client (`FileSource`, `SOURCE_KIND=file`), raw-JSON parser, collision and unmapped-model logging (`SnapshotBuilder`, internal) | exports `CloudSource`, `FileSource`, `parse_snapshot`, `parse_with_report`, `ParseReport`; both sources implement `Source.fetch(on_collision) -> Snapshot` (async); `parse_snapshot(raw, now, extract, on_collision)` raises `UpstreamError` unless `raw` has `devices` and `groups` objects; keyword-only `clock` (both sources) and `home_factory` (CloudSource) are test seams | contracts, config_models, redact; `homematicip` 2.23.1 (pinned in `requirements.txt`, imported lazily in `source/cloud.py` only) | `tests/source/` (`test_parser.py`, `test_file_source.py`, `test_cloud.py`) on the shared `tests/fixtures/mini_state.json` and `default_extract`, no network |
 | state | `state/` | Battery history on the volume | `FileStateStore` implements `StateStore` (0700/0600), raises `StateDirError`; `BatteryHistory(store, tuning).update(devices, now)` | contracts, config_models | `tests/state/test_store.py`, `tests/state/test_battery.py` (tmp_path, permissions, corrupt files, failed saves) |
-| metrics | `metrics/` | `config.yaml` schema/validation, metric definitions -> prometheus objects | `load_config`, `Registry.build/update/record_success/record_error/exposition`, `render(config, snapshot, batteries)` | contracts | golden exposition from a hand-built `Snapshot` (the fixture-through-parser golden test is task 4) |
+| metrics | `metrics/` | `config.yaml` schema and loading (`AppConfig`, `MetricDef`, `Transform`, `ConfigError`), metric definitions to Prometheus objects, derived and meta metrics, the `metrics:` list of `config/default-config.yaml` (14 entity metrics) | exports `load_config`, `parse_config`, `AppConfig`, `ConfigError`, `MetricDef`, `Transform`, `Registry`, `render`; `Registry.build(metric_defs, tuning, version, *, clock)` raises `ConfigError`; `Registry.update/record_success/record_error/exposition`; `record_success` raises `ValueError` outside the timestamp bounds or for a bad duration; `scale` only with transform `none` | contracts, config_models, redact; PyYAML 6.0.3 (`SafeLoader` subclass), pydantic 2.14.3, prometheus_client 0.26.0 (all pinned in `requirements.txt`) | `tests/metrics/` (`test_load_config.py`, `test_schema.py`, `test_registry.py`, `test_default_config.py`, `test_hardening*.py`) with the golden `golden/default_config.prom` from a hand-built `Snapshot` |
 | app | `app/` | FastAPI, poll loop, env config, logging filter | `create_app(*, settings=None, config=None, source=None, store=None) -> FastAPI` (env defaults); `/metrics /health /status` | contracts; concrete implementations only in `app/wiring.py` | fake Source, loop-error survival, clean shutdown |
 
 Machine-readable ownership: `.claude/ownership.yaml`, enforced by the `ownership` CI check and the path-guard hook; keep this table and that file in sync. Contract changes (`contracts.py`, `config_models.py`, `redact.py`) need `specs/spec.md` in the same PR.
 
 Dependency direction: `app` wires concrete `source`, `state`, `metrics` and depends only on `contracts` types. Other modules never import each other's concrete classes.
 
-Parallel-safe split: the shared contracts (`contracts.py`, `config_models.py`, `redact.py`) are done and human-reviewed; (small, human-reviewed); then source, state and metrics are built simultaneously; app against fakes; e2e last.
+Parallel-safe split: the shared contracts (`contracts.py`, `config_models.py`, `redact.py`) are done and human-reviewed; then source, state and metrics are built simultaneously; app against fakes; e2e last.
 
 ## 2. Dependency SBOM
 
@@ -38,7 +38,7 @@ Resolved and pinned 2026-11-18 in `requirements.txt` / `requirements-dev.txt` (r
 | uvicorn | 0.54.0 | ASGI server | app | BSD-3 | single `CMD` |
 | prometheus_client | 0.26.0 | metric objects, exposition | metrics, app | Apache-2.0 / BSD-2 | |
 | pydantic | see `requirements.txt` | config models and validation (imported directly by `config_models.py`) | contracts, metrics | MIT | direct import; pinned directly in `requirements.txt` (also pulled in by fastapi) |
-| PyYAML | 6.0.3 | metric config | metrics | MIT | `safe_load` only |
+| PyYAML | 6.0.3 | metric config | metrics | MIT | `SafeLoader` subclass only (strict loader in `metrics/config.py`), never `yaml.load` |
 | homematicip | 2.23.1 | HmIP cloud API client | source | **GPL-3.0-or-later** | spike: `docs/spikes/homematicip-spike.md`; needs Python >=3.12; pulls aiohttp, httpx2, opentelemetry-api |
 | httpx, pytest, pytest-asyncio | 0.28.1 / 9.2.0 / 1.5.0 | tests | all | BSD / MIT | dev only |
 | ruff, mypy, types-PyYAML | 0.17.5 / 2.4.1 / see file | lint, format, types | all | MIT | dev only |

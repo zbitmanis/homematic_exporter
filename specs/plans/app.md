@@ -43,5 +43,14 @@ The PR is not opened until every step is done or marked n/a with a reason. Paste
 - [ ] R9 `doc-updater`: `CLAUDE.md`, module `CLAUDE.md`, SBOM manifest, spec catalogue in sync
 - [ ] R10 owner PR review and squash merge
 
+## Requirements (from the `source` and `metrics` plans)
+- Config: `load_config(CONFIG_FILE)` runs once at startup. It is synchronous pure-Python YAML (up to about 2.6 s at the 256 KiB cap), so it is never called while serving. Catch `ConfigError` (its issues are already scrubbed) and fail startup with them.
+- `Registry.build` (raises `ConfigError`) runs at startup with `load_config`: a `ConfigError` is logged with its key paths and the process exits non-zero. In the poll loop `Registry.update` and `Registry.record_success` (raises `ValueError`) stay inside the app's error handling. An exception never ends the poll task; `CancelledError` propagates (R5).
+- `Registry.update` and `Registry.exposition` are CPU-bound (about 1 ms at 20 devices, under 100 ms at 2000) and touch memory only: call them directly on the event loop, not through `asyncio.to_thread`.
+- `/metrics` is served with `prometheus_client.CONTENT_TYPE_LATEST`.
+- Logging: the filter built on `redact.scrub` is installed on the library's logger as well as the app's. `homematicip` logs error response bodies and request URLs itself (it redacts by key only), and `source` cannot scrub them.
+- Timing: one `CloudSource.fetch` can take up to 2x `HTTP_TIMEOUT_SECONDS` (separate timeouts for `init_async` and the download). Size `POLL_INTERVAL_SECONDS` and any deadline for that, so polls never overlap (R4).
+- Memory: `SOURCE_KIND=file` adds about 200 MB at peak for an 8 MiB file (measured in the source module). Document it for operators; `FileSource` is for demos and tests.
+
 ## Requests (to the coordinator)
-_none yet_
+- Dockerfile (task 4, not this module's path): add `COPY config/default-config.yaml /app/default-config.yaml`. Until then the image has no bundled default, and without a mount it fails with "no config file" (R21, `metrics/CLAUDE.md`).
