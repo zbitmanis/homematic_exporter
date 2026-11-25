@@ -131,7 +131,7 @@ class StateStore(Protocol):
 
 `src/homematic_exporter/redact.py` is the third shared contract (phase-2 readiness task): pure `scrub(text, secrets) -> str` that replaces the given secrets, credential-looking `key[:=]value` pairs (`authToken`, `CLIENTAUTH`, `Authorization`, `pin`, `token`, also quoted JSON and `Bearer`) and 24-hex SGTINs with `[REDACTED]`. Anything that raises or logs upstream text uses it: `source` when it builds `UpstreamError` bodies, `app` in a logging filter for every other exception (R15, section 9).
 
-`contracts.py` also defines `NameCollisionError` and `CollisionPolicy = Literal["error", "suffix"]` (see `parse_snapshot` below and C1). Dataclasses holding `extras` are frozen but not hashable; key collections by name.
+`contracts.py` also defines `NameCollisionError` (raised when two devices, valves, contacts or rooms would get the same name; the message is `name collision: <sorted names>`) and `CollisionPolicy = Literal["error", "suffix"]` (see `parse_snapshot` below and C1). Dataclasses holding `extras` are frozen but not hashable; key collections by name.
 
 | Module | Public interface | Notes |
 |---|---|---|
@@ -180,7 +180,7 @@ Environment keeps secrets and operations (token, access point, ports, intervals,
 version: 1
 tuning:
   heat_demand_min_position: 0.0     # valve position above this counts as open
-  state_retention_days: 90
+  state_retention_days: 90         # 1..36500 days (upper bound keeps date maths in range)
 extract:
   system_room: system
   room_group_type: HEATING          # groups of this type are rooms; room name = group label

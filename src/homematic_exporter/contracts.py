@@ -96,10 +96,10 @@ CollisionPolicy = Literal["error", "suffix"]
 
 
 class NameCollisionError(Exception):
-    """Two or more devices would get the same name."""
+    """Two or more entities (devices, valves, contacts or rooms) would get the same name."""
 
     def __init__(self, names: Sequence[str]) -> None:
-        super().__init__(f"device name collision: {', '.join(sorted(names))}")
+        super().__init__(f"name collision: {', '.join(sorted(names))}")
         self.names = tuple(sorted(names))
 
 

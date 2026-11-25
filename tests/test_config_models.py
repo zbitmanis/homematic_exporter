@@ -142,3 +142,13 @@ def test_tuning_rejects_bad_values() -> None:
         Tuning(state_retention_days=0)
     with pytest.raises(ValidationError):
         Tuning.model_validate({"bogus": 1})
+
+
+@pytest.mark.parametrize("days", [36501, 10**30])
+def test_state_retention_days_has_an_upper_bound(days: int) -> None:
+    with pytest.raises(ValidationError):
+        Tuning(state_retention_days=days)
+
+
+def test_state_retention_days_accepts_the_upper_bound() -> None:
+    assert Tuning(state_retention_days=36500).state_retention_days == 36500

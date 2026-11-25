@@ -446,7 +446,7 @@ HIGH_BOUND = 4102444800.0
 )
 def test_stored_value_bounds(store: MemStore, field: str, value: object, kept: bool) -> None:
     store.data["battery"] = {"version": 1, "records": {"a": rec_data(**{field: value})}}
-    h = BatteryHistory(store, Tuning(state_retention_days=100000))
+    h = BatteryHistory(store, Tuning(state_retention_days=36500))
     h.update([], T0)
     assert (names(store) == ["a"]) is kept
 
