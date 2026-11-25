@@ -1,8 +1,8 @@
 # Default config bundled in the image (spec 5.1). Mounted override: /etc/homematic-exporter/config/config.yaml.
 # Contains no secrets and no identifying data, so it may live in git.
 #
-# Ownership: `extract` and `tuning` are fixed by the contracts task (changing a key needs a spec change);
-# the `metrics` list is filled by the `metrics` task.
+# Ownership: the `metrics` list (14 entity metrics, spec 6.2-6.4) is owned by the metrics module;
+# `extract` and `tuning` by the contracts task (changing a key needs a spec change).
 version: 1
 tuning:
   heat_demand_min_position: 0.0     # valve position above this counts as open
@@ -33,7 +33,7 @@ extract:
   valves:
     - channel_type: FLOOR_TERMINAL_BLOCK_MECHANIC_CHANNEL
       device_type: floor-valve
-      room_from: channel_groups     # room named by the channel's HEATING group; skipped if none
+      room_from: channel_groups     # room named by the channel's HEATING group; skipped if none or several
       fields: { position_ratio: valvePosition }
     - channel_type: HEATING_THERMOSTAT_CHANNEL
       device_type: radiator-thermostat
